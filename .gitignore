@@ -1,0 +1,5 @@
+Tools and diagnostics/Diagnostics/Logs/*
+!Tools and diagnostics/Diagnostics/Logs/.gitkeep
+Tools and diagnostics/Source/dist/
+*.tmp
+.DS_Store

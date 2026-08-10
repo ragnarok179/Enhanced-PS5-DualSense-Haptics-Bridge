@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "profile_version": "V1",
+  "reference": "V1 unified 48 kHz Common Feel Engine; USB direct, Bluetooth derived through a 48 kHz to 3 kHz transport adapter",
+  "surface": {
+    "low_speed": {
+      "min_speed_ms": 0.25,
+      "full_speed_ms": 6.0,
+      "min_amplitude_scale": 0.16,
+      "amplitude_exponent": 0.65,
+      "cadence_full_speed_ms": 8.0,
+      "cadence_min_scale": 0.18,
+      "cadence_span": 0.82,
+      "carrier_min_scale": 0.34,
+      "carrier_span": 0.6957142857,
+      "high_speed_carrier_base": 0.75,
+      "high_speed_carrier_divisor": 28.0,
+      "high_speed_carrier_max": 1.8
+    },
+    "synthetic_cooldown_ms": {
+      "asphalt": [
+        800,
+        140
+      ],
+      "asphalt_wet": [
+        800,
+        140
+      ],
+      "slippery": [
+        800,
+        140
+      ],
+      "ice": [
+        800,
+        140
+      ],
+      "sand": [
+        520,
+        95
+      ],
+      "mud": [
+        520,
+        95
+      ],
+      "grass": [
+        460,
+        95
+      ],
+      "snow": [
+        460,
+        95
+      ],
+      "dirt": [
+        420,
+        70
+      ],
+      "dusty_dirt": [
+        420,
+        70
+      ],
+      "sandy_road": [
+        420,
+        70
+      ],
+      "gravel": [
+        320,
+        45
+      ],
+      "rock": [
+        460,
+        90
+      ],
+      "cobblestone": [
+        300,
+        55
+      ],
+      "rumble_strip": [
+        240,
+        35
+      ],
+      "default": [
+        360,
+        80
+      ]
+    }
+  },
+  "triggers": {
+    "abs": {
+      "release_strength_8": 0,
+      "lock_release_strength_8": 1,
+      "kick_strength_8": 6,
+      "base_strength_8": 1
+    },
+    "r2": {
+      "normal_start_strength_8": 1,
+      "normal_end_strength_8": 1,
+      "wheelspin_start_position_255": 26,
+      "wheelspin_end_position_255": 144,
+      "wheelspin_start_strength_255": 3,
+      "wheelspin_end_strength_255": 1,
+      "shift_position_255": 0,
+      "shift_strength_255": 1,
+      "shift_duration_ms": 150
+    }
+  },
+  "shift_haptic": {
+    "min_strength": 0.11,
+    "max_strength": 0.15,
+    "min_duration_ms": 68,
+    "max_duration_ms": 82,
+    "priority": 25,
+    "surface_duck": 0.76,
+    "global_duck": 0.76
+  },
+  "body_isolation": {
+    "opposite_merge_window_ms": 45,
+    "collision": {
+      "hard_attack_ms": 32,
+      "release_end_ms": 112
+    },
+    "landing": {
+      "hard_attack_ms": 28,
+      "release_end_ms": 96
+    },
+    "suspension_bump": {
+      "hard_attack_ms": 128,
+      "release_end_ms": 150,
+      "opposite_merge_window_ms": 8
+    }
+  },
+  "led": {
+    "first_ratio": 0.7,
+    "red_ratio": 0.95,
+    "blink_only_on_rev_limiter": true,
+    "blink_min_ratio": 0.92,
+    "blink_hz": 8.0,
+    "max_brightness": 220,
+    "min_brightness": 48,
+    "off_ratio": 0.65,
+    "off_hold_ms": 300,
+    "red_exit_ratio": 0.92,
+    "blink_hold_ms": 180
+  },
+  "transport": {
+    "usb_output_gain": 1.0,
+    "bluetooth_output_gain": 0.78,
+    "bluetooth_gain_basis": "Controller IMU comparison from paired USB/Bluetooth BeamNG logs; global transport compensation only, never per material or effect."
+  }
+}
