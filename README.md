@@ -1,190 +1,176 @@
 # Enhanced PS5 DualSense Haptics Bridge
 
-Physics-driven DualSense haptics and adaptive triggers for **BeamNG.drive**, with direct **USB and Bluetooth** support on Windows.
+Bring the full DualSense experience to **BeamNG.drive** with **HD stereo haptics, adaptive triggers and dynamic LED lighting**.
 
-This bridge works with the separate **Enhanced PS5 DualSense Haptics** BeamNG mod. It receives local BeamNG telemetry and converts it into stereo haptics, adaptive-trigger states and controller feedback without requiring DSX.
+This is the companion Windows Bridge for the [Enhanced PS5 DualSense Haptics](https://www.beamng.com/resources/enhanced-ps5-dualsense-haptics.38997/) BeamNG.drive mod.
 
-## Features
+Designed to be simple and automatic, it does **not require large third-party controller software such as DSX or DS4Windows**. Instead, this lightweight Bridge is made specifically for BeamNG.drive, communicates directly with the DualSense and automatically handles USB or Bluetooth.
 
-- Physics-driven stereo haptics for road surfaces.
-- Left/right suspension impacts based on per-wheel BeamNG impact data.
-- Collision and landing feedback with strength-dependent signatures.
-- Wheelspin, TCS, rev-limiter and shift feedback.
-- Adaptive L2 brake feedback with ABS pulses.
-- Adaptive R2 throttle feedback.
-- RPM-reactive DualSense lightbar behavior.
-- Direct USB and Bluetooth transport.
-- One shared haptic gameplay engine for both transports.
-- Hardware probes, stereo tests and diagnostic log tools.
-- Full Go source code and reproducible Windows build scripts.
+Once installed, simply connect the controller and start the Bridge.
 
-## Requirements
 
-- Windows.
-- BeamNG.drive.
-- Sony DualSense controller.
-- The separate `Enhanced_PS5_DualSense_Haptics.zip` BeamNG mod.
+## Main features
 
-## Quick start
+- **HD stereo haptics:** surfaces, suspension, bumps, collisions, landings, tyres, transmission, etc.
+- **Adaptive triggers:** L2 braking/ABS/wheel lock and R2 throttle/wheelspin/TCS/shift feedback and airborn mode.
+- **Dynamic lighting:** RPM-reactive DualSense lightbar and rev-limiter behavior.
 
-1. Install the BeamNG mod ZIP in your BeamNG mods folder or through the BeamNG Repository.
-2. Download this repository or the latest GitHub Release.
-3. Connect the DualSense over USB or Bluetooth.
-4. Run `START_BRIDGE.bat`.
-5. Start BeamNG.drive.
 
-`START_BRIDGE.bat` probes USB first and then Bluetooth, and starts the matching bridge automatically.
+## Installation
 
-You can also use:
+1) Download and install [Enhanced PS5 DualSense Haptics](https://www.beamng.com/resources/enhanced-ps5-dualsense-haptics.38997/) through the BeamNG Repository.
+2) Download the latest Bridge release from GitHub. Extract the **complete Bridge folder** anywhere on Windows. Do not run the Bridge directly from the ZIP and do not move individual files out of the extracted folder.
+3) Start BeamNG.drive and **disable BeamNG's native controller vibration** while using this mod.
+4) Connect the DualSense through USB or Bluetooth.
+5) Run START_BRIDGE.bat, or use START_BRIDGE_AND_BEAMNG.bat to automatically start both the Bridge and BeamNG.drive.
+
+Notes :
+The Bridge can be launched at any time, before or after BeamNG.drive, as long as the DualSense is connected to the PC. No specific launch order is required.
+
+If you disconnect the DualSense or switch between USB and Bluetooth, reconnect the controller and restart the Bridge.
+
+For a more precise and spatialized experience, it is recommended to use the DualSense controller via wired USB rather than Bluetooth. Bluetooth uses a lower-bandwidth haptic transport and cannot reproduce the full HD haptic detail available over USB.
+
+
+## Optional manual updater
+
+Run `UPDATE_BRIDGE.bat` whenever you want to check the installed Bridge against the current GitHub repository version.
+
+The updater downloads a clean copy of the `main` branch, verifies it with `SHA256SUMS.txt`, then shows which managed files are new, changed or obsolete before asking for confirmation.
+
+It updates only files managed by `SHA256SUMS.txt`. Diagnostic logs and other local files that are not part of the manifest are left untouched.
+
+> The Bridge must be closed while updating. BeamNG.drive can stay open.
+
+
+## Troubleshooting
+
+**Mod installed but no feedback?** Make sure the mod is enabled in BeamNG's Mod Manager, then reload the current vehicle with CTRL+R. If it still does not initialize, restart BeamNG.drive.
+- Do not run DSX, DS4Windows or another application that controls DualSense haptics or LEDs at the same time.
+- If the DualSense does not work correctly in BeamNG, disable Steam Input for BeamNG.drive in Steam > Properties > Controller.
+- Microsoft GameInput 3.0 or newer is installed. GameInput can be easily installed or updated from an administrator terminal using the command: winget install Microsoft.GameInput
+- Updating the DualSense firmware through PlayStation Accessories is recommended.
+
+
+## Diagnostic tools
+
+The Bridge includes additional troubleshooting and testing tools under:
+
+`Tools and diagnostics\Diagnostics\`
+
+Available tools include:
+
+- Hardware detection
+- Audio-output detection
+- USB stereo testing
+- Bluetooth stereo testing
+- Bluetooth bump-carrier testing
+- USB diagnostic logging
+- Bluetooth diagnostic logging
+- Bridge log collection
+
+These tools are mainly intended for troubleshooting and bug reports.
+
+
+## How it works
+
+BeamNG.drive sends local vehicle telemetry to the Bridge.
+
+The Bridge interprets this telemetry using a shared physics-driven haptic engine:
 
 ```text
-START_BRIDGE_AND_BEAMNG.bat
+BeamNG.drive vehicle physics
+            |
+            v
+      Local telemetry
+            |
+            v
+     Common Feel Engine
+            |
+            v
+ Canonical 48 kHz stereo haptics
+            |
+      +-----+-----+
+      |           |
+      v           v
+     USB       Bluetooth
+   48 kHz       adapted
+ HD haptics     transport
 ```
 
-to launch BeamNG through Steam and start the bridge.
 
-## Important controller settings
+## Simulated feedback
 
-Disable BeamNG's native gamepad vibration while using this bridge. Running two haptic writers at the same time can produce duplicated or conflicting feedback.
+The system can react to vehicle physics and events including:
 
-If you encounter controller conflicts, close other software that actively writes DualSense haptics or LED state, such as DSX/DS4Windows features or another DualSense bridge.
+- Asphalt and other road textures
+- Wet and slippery surfaces
+- Gravel
+- Dirt
+- Cobblestone
+- Rumble strips
+- Sand
+- Mud
+- Grass
+- Snow
+- Ice
+- Rock
+- Suspension movement
+- Individual wheel impacts
+- Bumps and road irregularities
+- Collisions
+- Landings
+- Wheelspin
+- Traction-control intervention
+- ABS
+- Wheel lock
+- Gear shifts
+- Rev limiter
+- Vehicle airborne state
+- Engine RPM
 
-## Haptic architecture
 
-The gameplay interpretation is shared between USB and Bluetooth:
+## HD stereo haptics
 
-```text
-BeamNG telemetry
-      |
-      v
-Common Feel Engine
-      |
-      v
-Canonical 48 kHz stereo haptics
-      |                         |
-      v                         v
-USB / WASAPI              Bluetooth adapter
-48 kHz grips              anti-alias + 48k -> 3k
-                                |
-                                v
-                          DualSense 0x36 packets
-```
+Road textures and vehicle events are generated from BeamNG's live physics rather than using generic vibration presets.
 
-USB is the canonical reference path. Bluetooth is derived from the same gameplay signal and uses only a final transport-level gain; there are no separate per-surface Bluetooth tuning tables.
+The stereo haptic system allows physical events to be spatialized across the DualSense, making impacts and road feedback correspond more closely to what happens on the left and right sides of the vehicle.
+
+The haptic engine includes feedback for road surfaces, suspension movement, wheel impacts, collisions, landings, tyre behavior, transmission events and other vehicle dynamics.
+
 
 ## Adaptive triggers
 
-### R2 — throttle
+### L2 — Brake
 
-- Normal grounded driving: constant `1/8` resistance across the full trigger travel.
-- Airborne vehicle: exact `1/255` fine-feedback state.
-- No progressive `1/8 -> 2/8` increase at full throttle.
-- Wheelspin, TCS, rev limiter and shift events can temporarily use dedicated states.
+L2 provides dynamic brake feedback including:
 
-### L2 — brake
+- Normal braking resistance
+- ABS pulse feedback
+- Locked-wheel behavior
+- Airborn mode
 
-L2 includes brake resistance and ABS pulse behavior driven by BeamNG telemetry.
 
-## Repository layout
+### R2 — Throttle
 
-```text
-START_BRIDGE.bat
-START_BRIDGE_AND_BEAMNG.bat
-README.md
-LICENSE
-CHANGELOG.md
-THIRD_PARTY_NOTICES.md
-SHA256SUMS.txt
-Tools and diagnostics/
-  Bridge/
-    EnhancedPS5DualSenseHapticsBluetooth.exe
-    EnhancedPS5DualSenseHapticsUSB.exe
-  Config/
-    feel_profile_v1.json
-  Diagnostics/
-    LIST_HARDWARE.bat
-    LIST_AUDIO_OUTPUTS.bat
-    SHOW_FEEL_PROFILE.bat
-    START_USB_DIAGNOSTIC_LOG.bat
-    START_BLUETOOTH_DIAGNOSTIC_LOG.bat
-    TEST_USB_STEREO.bat
-    TEST_BLUETOOTH_STEREO.bat
-    TEST_BLUETOOTH_BUMP_CARRIER.bat
-    Logs/
-  Source/
-    *.go
-    go.mod
-    SOURCE_LAYOUT.md
-    docs/
-    scripts/
-```
+R2 provides dynamic throttle feedback including:
 
-## Diagnostics
+- Normal throttle resistance
+- Wheelspin feedback
+- TCS feedback
+- Gear-shift feedback
+- Airborn mode
 
-If the bridge cannot find the controller, start with:
 
-```text
-Tools and diagnostics\Diagnostics\LIST_HARDWARE.bat
-```
+## Dynamic lighting
 
-Useful transport-only tests:
+The DualSense lightbar reacts dynamically to engine RPM like BeamNG in 0.39.
 
-```text
-TEST_USB_STEREO.bat
-TEST_BLUETOOTH_STEREO.bat
-TEST_BLUETOOTH_BUMP_CARRIER.bat
-```
+Its behavior follows the engine rev range and provides dedicated feedback when the vehicle reaches the rev limiter.
 
-Diagnostic bridge logs are written to:
-
-```text
-Tools and diagnostics\Diagnostics\Logs\
-```
-
-## Building from source
-
-Go 1.23+ is recommended.
-
-From:
-
-```text
-Tools and diagnostics\Source\
-```
-
-run:
-
-```text
-BUILD_WINDOWS.bat
-```
-
-or execute the PowerShell build script directly.
-
-The public executables are built with trimmed source paths. GitHub Actions also runs the test/build pipeline on pushes and pull requests.
-
-## Configuration
-
-Transport and feel settings are stored in:
-
-```text
-Tools and diagnostics\Config\feel_profile_v1.json
-```
-
-USB/Bluetooth strength compensation is intentionally global and applied only at the final transport boundary. Avoid changing individual surface or collision gains to compensate for a transport-level strength difference.
-
-## BeamNG protocol
-
-The BeamNG mod sends local UDP telemetry to the bridge. The bridge does not modify BeamNG game files and the controller transport is handled outside the game process.
-
-Protocol and architecture documentation is available under:
-
-```text
-Tools and diagnostics\Source\docs\
-```
 
 ## License
 
-MIT. See `LICENSE` and `THIRD_PARTY_NOTICES.md`.
+MIT.
 
-## Disclaimer
-
-This is a community project and is not affiliated with or endorsed by BeamNG GmbH or Sony Interactive Entertainment. DualSense is a trademark of Sony Interactive Entertainment.
+See `LICENSE` and `THIRD_PARTY_NOTICES.md`.

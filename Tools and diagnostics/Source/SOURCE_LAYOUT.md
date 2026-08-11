@@ -22,3 +22,14 @@ Key files:
 Keeping shared behavior in one package prevents the two transports from silently
 drifting apart while still keeping platform-specific I/O isolated in clearly
 named files.
+
+
+## Updater manifest
+
+`UPDATE_BRIDGE.bat` uses the repository `SHA256SUMS.txt` as the list of files managed by the public updater. After changing, adding or removing distributed files, run:
+
+```text
+GENERATE_SHA256SUMS.bat
+```
+
+from this `Source` folder before pushing. CI verifies that the manifest matches the repository contents.
