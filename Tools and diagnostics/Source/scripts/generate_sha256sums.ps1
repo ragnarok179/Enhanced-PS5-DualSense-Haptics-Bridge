@@ -13,7 +13,9 @@ $files = Get-ChildItem -LiteralPath $RepositoryRoot -File -Recurse | Where-Objec
 } | Sort-Object FullName
 
 $lines = foreach ($file in $files) {
-    $relative = $file.FullName.Substring($RepositoryRoot.Length).TrimStart('\\','/') -replace '\\','/'
+    $relative = $file.FullName.Substring($RepositoryRoot.Length)
+    $relative = $relative -replace '^[\\/]+', ''
+    $relative = $relative -replace '\\', '/'
     $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  ./$relative"
 }
