@@ -35,6 +35,8 @@ jobs:
           mkdir -p dist
           go build -trimpath -ldflags='-s -w' -tags bluetooth -o dist/EnhancedPS5DualSenseHapticsBluetooth.exe .
           go build -trimpath -ldflags='-s -w' -tags usb -o dist/EnhancedPS5DualSenseHapticsUSB.exe .
+          go build -trimpath -ldflags='-s -w' -o dist/START_BRIDGE.exe ./launcher
+          cp dist/START_BRIDGE.exe dist/START_BRIDGE_AND_BEAMNG.exe
       - uses: actions/upload-artifact@v4
         with:
           name: windows-v1

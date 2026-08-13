@@ -75,7 +75,7 @@ if (Test-Path -LiteralPath (Join-Path $InstallRoot '.git') -PathType Container) 
     exit 4
 }
 
-$bridgeProcesses = @('EnhancedPS5DualSenseHapticsUSB', 'EnhancedPS5DualSenseHapticsBluetooth')
+$bridgeProcesses = @('EnhancedPS5DualSenseHapticsUSB', 'EnhancedPS5DualSenseHapticsBluetooth', 'START_BRIDGE', 'START_BRIDGE_AND_BEAMNG')
 foreach ($processName in $bridgeProcesses) {
     if (Get-Process -Name $processName -ErrorAction SilentlyContinue) {
         Write-Host "[ERROR] The Bridge is currently running. Close it before updating."
@@ -105,7 +105,7 @@ try {
     }
 
     $remoteRoot = Split-Path -Parent $remoteManifestFile.FullName
-    if (-not (Test-Path -LiteralPath (Join-Path $remoteRoot 'START_BRIDGE.bat'))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $remoteRoot 'START_BRIDGE.exe'))) {
         throw 'The downloaded repository layout is not recognized. Update cancelled.'
     }
 

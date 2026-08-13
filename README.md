@@ -22,7 +22,7 @@ Once installed, simply connect the controller and start the Bridge.
 2) Download the latest Bridge release from GitHub. Extract the **complete Bridge folder** anywhere on Windows. Do not run the Bridge directly from the ZIP and do not move individual files out of the extracted folder.
 3) Start BeamNG.drive and **disable BeamNG's native controller vibration** while using this mod.
 4) Connect the DualSense through USB or Bluetooth.
-5) Run START_BRIDGE.bat, or use START_BRIDGE_AND_BEAMNG.bat to automatically start both the Bridge and BeamNG.drive.
+5) Run `START_BRIDGE.exe`, or use `START_BRIDGE_AND_BEAMNG.exe` to automatically start both the Bridge and BeamNG.drive.
 
 Notes :
 The Bridge can be launched at any time, before or after BeamNG.drive, as long as the DualSense is connected to the PC. No specific launch order is required.

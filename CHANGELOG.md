@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Replaced the two public BAT launchers with `START_BRIDGE.exe` and `START_BRIDGE_AND_BEAMNG.exe`.
+- Both public launchers use one shared Go implementation; the launcher is built once and copied byte-for-byte under the second filename.
+- Preserved the existing USB/Bluetooth detection and Bridge launch behavior.
+
 ## V1
 
 - Added optional `UPDATE_BRIDGE.bat` manual updater with SHA-256 manifest verification and safe managed-file synchronization.

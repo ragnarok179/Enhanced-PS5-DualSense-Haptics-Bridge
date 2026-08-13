@@ -23,6 +23,14 @@ Keeping shared behavior in one package prevents the two transports from silently
 drifting apart while still keeping platform-specific I/O isolated in clearly
 named files.
 
+## Public launcher
+
+The two root launchers are produced from one implementation in `launcher/main.go`.
+`START_BRIDGE.exe` is built once, then copied byte-for-byte to
+`START_BRIDGE_AND_BEAMNG.exe`. At runtime the launcher reads its own filename to
+select whether it should start BeamNG.drive before detecting USB/Bluetooth and
+starting the corresponding Bridge executable. This keeps the launcher logic in
+one place.
 
 ## Updater manifest
 
