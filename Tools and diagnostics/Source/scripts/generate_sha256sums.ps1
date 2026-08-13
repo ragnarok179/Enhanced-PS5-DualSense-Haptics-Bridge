@@ -5,6 +5,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepositoryRoot = [System.IO.Path]::GetFullPath($RepositoryRoot)
 $Output = Join-Path $RepositoryRoot 'SHA256SUMS.txt'
+$LegacyLauncherMarker = Join-Path $RepositoryRoot 'START_BRIDGE.bat'
 
 function Get-RepositorySha256([string]$Path) {
     $bytes = [System.IO.File]::ReadAllBytes($Path)
@@ -38,6 +39,7 @@ function Get-RepositorySha256([string]$Path) {
 
 $files = Get-ChildItem -LiteralPath $RepositoryRoot -File -Recurse | Where-Object {
     $_.FullName -ne $Output -and
+    $_.FullName -ne $LegacyLauncherMarker -and
     $_.FullName -notmatch '[\\/]\.git[\\/]' -and
     $_.FullName -notmatch '[\\/]Tools and diagnostics[\\/]Diagnostics[\\/]Logs[\\/](?!\.gitkeep$)'
 } | Sort-Object FullName
