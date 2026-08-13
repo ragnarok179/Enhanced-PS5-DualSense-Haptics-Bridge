@@ -3,7 +3,7 @@
 3ede70f45ebfe4c710598d3f8b1ab48bc639a853854670d22f214aab151bea77  ./.gitignore
 ec69c17154a375538e9e6de603e33ede97588fcf4d588a49e19ed2caa02dd6a4  ./CHANGELOG.md
 642a56e4a2547e38e6f5f9ebbd32142224160610c95a2eae8c5468c9e016abb3  ./LICENSE
-9caf02d5b421adda7c70033378a0541ab85f323b45b3c0aeca793c2f6ad0d6c7  ./README.md
+de876a8fb2ab66c1ca0a64c645aa577076abafbc3f5d66aa51c3205d757ea452  ./README.md
 1ed3d9dbbbcfcd6edcce4e67b586c33ed3f593adc7758f2e911685a4a44696cd  ./START_BRIDGE.exe
 1ed3d9dbbbcfcd6edcce4e67b586c33ed3f593adc7758f2e911685a4a44696cd  ./START_BRIDGE_AND_BEAMNG.exe
 f7d202e126015eaa7b40c6f11c0ae8d3d3064f8c7f64a19d855e08912c09c44d  ./THIRD_PARTY_NOTICES.md
@@ -21,12 +21,9 @@ af94a87a1a46979540b36d7354c9eaf9ab71ccfb48e6e9d541e4ed27f5af59d7  ./Tools and di
 f9323c1006e6d716c05f7010fad3cc402b9560705d3e9ed3c2a9c985cb7b2be3  ./Tools and diagnostics/Diagnostics/TEST_BLUETOOTH_STEREO.bat
 fd5cb548a6f9351de1191536b7b10602039102f05dbbc5e94d11310c2175d665  ./Tools and diagnostics/Diagnostics/TEST_USB_STEREO.bat
 20dc22495901521cb207dfa1a20733ceb6dd1a0914b2e295208afa530bc80036  ./Tools and diagnostics/README.md
-9e8d163913b1ee3f3f0697c5e6edd8d6f60547c01139f4b00f561342c13881e7  ./Tools and diagnostics/Source/BUILD_WINDOWS.bat
-8fcdfe65126fabe5476c487b1578518ab45a86eac94d1dfe77bdb7f26576ec53  ./Tools and diagnostics/Source/GENERATE_SHA256SUMS.bat
-7c99b58811ac0383fe29518d6845d7641b123b0d0355079b1b749cf38d2f6dab  ./Tools and diagnostics/Source/RUN_TESTS.bat
-b805a799d7fc1d4946d284fff40b188fe09cd399ee6cbcfa5dd4c2a760dbdaab  ./Tools and diagnostics/Source/SOURCE_LAYOUT.md
 167841eeda931a7e1c1ac0f30ab7377c2404cde73fbf272363a7cbf193b6801b  ./Tools and diagnostics/Source/bluetooth_audio_packets.go
 fd83d3c924b330b82241c3f5b4d41ac59f12f2e34c1cdf2c1bd090470c8bae90  ./Tools and diagnostics/Source/bluetooth_main_windows.go
+9e8d163913b1ee3f3f0697c5e6edd8d6f60547c01139f4b00f561342c13881e7  ./Tools and diagnostics/Source/BUILD_WINDOWS.bat
 27a3520ea60507c0acaf5a76d81b0f55681feb4deb41369b2a00098000c9cfd8  ./Tools and diagnostics/Source/common_feel_engine.go
 6e11d9b9140a697cc6186463948d5653d28b17d33df40b4919f96e794e18e40c  ./Tools and diagnostics/Source/docs/ARCHITECTURE.md
 8d2d70baf64f3783ab289dba3c04693e7a77ba81c4c2936f22fe67818424a144  ./Tools and diagnostics/Source/docs/BEAMNG_PROTOCOL.md
@@ -34,6 +31,7 @@ fd83d3c924b330b82241c3f5b4d41ac59f12f2e34c1cdf2c1bd090470c8bae90  ./Tools and di
 516df5d62595c9effd1a8f9e9de81b671d817617c20c016e66abc640af94e531  ./Tools and diagnostics/Source/dualsense_reports.go
 e067a935bc6f3db41fc396660300c1e28390879978ac191ff2fbbd2d4aae2727  ./Tools and diagnostics/Source/feel_profile.go
 aa8ba5a06411219ce23db4b69dc1cc9234ef5730c97fd440143636f4d3cb630a  ./Tools and diagnostics/Source/gameplay_effects.go
+8fcdfe65126fabe5476c487b1578518ab45a86eac94d1dfe77bdb7f26576ec53  ./Tools and diagnostics/Source/GENERATE_SHA256SUMS.bat
 d777d025082a4e400b4d14afa23b97f87609a599d9ec4d91e943074b64c44f5c  ./Tools and diagnostics/Source/go.mod
 0bc43d8f82f17d28c10777bc013b12b88531937056d6daa1b73ec18748623fc1  ./Tools and diagnostics/Source/haptic_mixer.go
 33641b8c896faf9cd88361ac1ecb629cfe3f547fff3b8a6c59c6e1fa1961336e  ./Tools and diagnostics/Source/haptic_pipeline.go
@@ -43,9 +41,11 @@ a8d0d5d115be14b4c703ef10bb638af15921c671a7667a2fb5d65325cf410fb0  ./Tools and di
 c20d5cc78a190f5672ef05dd421e83e61b0ae50c1cdec66bb566f2dce11814d3  ./Tools and diagnostics/Source/mixer_test.go
 9653ebc9e2f47f07ac6cce42fd97e0bd41039ba5e2c2bfff76c0d12a92f6c745  ./Tools and diagnostics/Source/raw_bump_renderer.go
 c2bee38810e43e711d39ea984377a045fbc9c271f8cc71ef98c72ccac576d032  ./Tools and diagnostics/Source/raw_bump_renderer_test.go
+7c99b58811ac0383fe29518d6845d7641b123b0d0355079b1b749cf38d2f6dab  ./Tools and diagnostics/Source/RUN_TESTS.bat
 0558661a36379b7d5bae8aa99caf11df1d2f38c29a3b10273bd03b14b36a3dbb  ./Tools and diagnostics/Source/scripts/build.ps1
 63a586a21dd815a9f8fcad9091a6af4a4f8cedf3939b1b6f404579398c230e67  ./Tools and diagnostics/Source/scripts/generate_sha256sums.ps1
 100850329e5b26da1f93a5e480089ffa01a1b10b8fc847e3bb38b1de212579b8  ./Tools and diagnostics/Source/scripts/test.ps1
+b805a799d7fc1d4946d284fff40b188fe09cd399ee6cbcfa5dd4c2a760dbdaab  ./Tools and diagnostics/Source/SOURCE_LAYOUT.md
 a230e355bca116b4ff3c5777be7c06ccea4c60a3bbd0ce56b2d379a1b6c5ed7a  ./Tools and diagnostics/Source/telemetry.go
 b19e4760d3237dc9e5aedd8c7f24ec7fabaae9c4356c9d30eb5f689e5bbad269  ./Tools and diagnostics/Source/usb_audio_shared_windows.go
 91c87aa03dc7e2f1e80f183bbbda2be837a7a63ab7dd1d6a2b7e8580943eacc9  ./Tools and diagnostics/Source/usb_hid_windows.go

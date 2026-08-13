@@ -169,6 +169,23 @@ The DualSense lightbar reacts dynamically to engine RPM like BeamNG in 0.39.
 Its behavior follows the engine rev range and provides dedicated feedback when the vehicle reaches the rev limiter.
 
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+### Team roles
+
+- Committer and reviewer: [Ragnarok179](https://github.com/ragnarok179)
+- Approver: [Ragnarok179](https://github.com/ragnarok179)
+
+### Privacy
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+BeamNG.drive vehicle telemetry is received and processed locally to generate controller feedback. No gameplay telemetry or personal user data is sent to the developer or to analytics services.
+
+Network access to GitHub occurs only for actions explicitly requested by the user, such as checking for or downloading updates.
+
 ## License
 
 MIT.
