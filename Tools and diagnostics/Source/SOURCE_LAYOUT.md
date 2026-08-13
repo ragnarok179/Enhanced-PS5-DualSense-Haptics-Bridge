@@ -32,9 +32,17 @@ select whether it should start BeamNG.drive before detecting USB/Bluetooth and
 starting the corresponding Bridge executable. This keeps the launcher logic in
 one place.
 
+## Public updater
+
+`updater/main.go` builds the root `UPDATE_BRIDGE.exe`. The updater checks GitHub's latest stable Release and downloads the release asset named exactly `Enhanced_PS5_DualSense_Haptics_Bridge.zip`; it never synchronizes normal users against the development `main` branch. The downloaded package is verified against its `SHA256SUMS.txt` manifest before installation.
+
+The updater copies itself to a temporary folder before applying an update, so the installed updater executable can be replaced safely without a second helper binary.
+
+The GitHub repository keeps the old `UPDATE_BRIDGE.bat` and `Tools and diagnostics/Updater/Update-Bridge.ps1` only for V1.1 migration compatibility. The legacy V1.1 updater still uses `main` because that behavior is already shipped and cannot be changed retroactively; after migration, `UPDATE_BRIDGE.exe` uses stable Releases only. The EXE updater treats those scripts as compatibility-only files and removes them from modern installations.
+
 ## Updater manifest
 
-`UPDATE_BRIDGE.bat` uses the repository `SHA256SUMS.txt` as the list of files managed by the public updater. After changing, adding or removing distributed files, run:
+`UPDATE_BRIDGE.exe` uses the repository `SHA256SUMS.txt` as the list of files managed by the public updater. After changing, adding or removing distributed files, run:
 
 ```text
 GENERATE_SHA256SUMS.bat

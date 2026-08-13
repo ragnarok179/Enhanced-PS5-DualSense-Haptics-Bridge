@@ -19,7 +19,7 @@ Once installed, simply connect the controller and start the Bridge.
 ## Installation
 
 1) Download and install [Enhanced PS5 DualSense Haptics](https://www.beamng.com/resources/enhanced-ps5-dualsense-haptics.38997/) through the BeamNG Repository.
-2) Download the latest Bridge release from GitHub. Extract the **complete Bridge folder** anywhere on Windows. Do not run the Bridge directly from the ZIP and do not move individual files out of the extracted folder.
+2) Download the `Enhanced_PS5_DualSense_Haptics_Bridge.zip` asset from the latest GitHub Release (not GitHub's automatically generated Source code ZIP). Extract the **complete Bridge folder** anywhere on Windows. Do not run the Bridge directly from the ZIP and do not move individual files out of the extracted folder.
 3) Start BeamNG.drive and **disable BeamNG's native controller vibration** while using this mod.
 4) Connect the DualSense through USB or Bluetooth.
 5) Run `START_BRIDGE.exe`, or use `START_BRIDGE_AND_BEAMNG.exe` to automatically start both the Bridge and BeamNG.drive.
@@ -34,13 +34,17 @@ For a more precise and spatialized experience, it is recommended to use the Dual
 
 ## Optional manual updater
 
-Run `UPDATE_BRIDGE.bat` whenever you want to check the installed Bridge against the current GitHub repository version.
+Run `UPDATE_BRIDGE.exe` whenever you want to check for a newer stable Bridge release.
 
-The updater downloads a clean copy of the `main` branch, verifies it with `SHA256SUMS.txt`, then shows which managed files are new, changed or obsolete before asking for confirmation.
+The updater checks the latest stable GitHub Release and downloads the official `Enhanced_PS5_DualSense_Haptics_Bridge.zip` release asset. It does not update from the development `main` branch.
 
-It updates only files managed by `SHA256SUMS.txt`. Diagnostic logs and other local files that are not part of the manifest are left untouched.
+The downloaded package is verified with `SHA256SUMS.txt`, then the updater shows which managed files are new, changed or obsolete before asking for confirmation.
+
+It runs the update from a temporary copy of itself, allowing `UPDATE_BRIDGE.exe` to update safely without a separate helper application. Diagnostic logs and other local files that are not part of the manifest are left untouched.
 
 > The Bridge must be closed while updating. BeamNG.drive can stay open.
+
+> Maintainers: every stable GitHub Release intended for the updater must include an asset named exactly `Enhanced_PS5_DualSense_Haptics_Bridge.zip`.
 
 
 ## Troubleshooting

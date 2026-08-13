@@ -5,6 +5,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepositoryRoot = [System.IO.Path]::GetFullPath($RepositoryRoot)
 $Output = Join-Path $RepositoryRoot 'SHA256SUMS.txt'
+# START_BRIDGE.bat exists only so the V1.1 updater can recognize the new layout.
+# It is intentionally not part of the managed installation manifest.
 $LegacyLauncherMarker = Join-Path $RepositoryRoot 'START_BRIDGE.bat'
 
 function Get-RepositorySha256([string]$Path) {

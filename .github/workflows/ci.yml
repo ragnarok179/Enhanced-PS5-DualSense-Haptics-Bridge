@@ -26,6 +26,14 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: 0
         run: go vet -tags bluetooth ./...
+      - name: Windows launcher and updater vet
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: |
+          go vet ./launcher
+          go vet ./updater
       - name: Build Windows binaries
         env:
           GOOS: windows
@@ -35,8 +43,9 @@ jobs:
           mkdir -p dist
           go build -trimpath -ldflags='-s -w' -tags bluetooth -o dist/EnhancedPS5DualSenseHapticsBluetooth.exe .
           go build -trimpath -ldflags='-s -w' -tags usb -o dist/EnhancedPS5DualSenseHapticsUSB.exe .
-          go build -trimpath -ldflags='-s -w' -o dist/START_BRIDGE.exe ./launcher
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o dist/START_BRIDGE.exe ./launcher
           cp dist/START_BRIDGE.exe dist/START_BRIDGE_AND_BEAMNG.exe
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o dist/UPDATE_BRIDGE.exe ./updater
       - uses: actions/upload-artifact@v4
         with:
           name: windows-v1
