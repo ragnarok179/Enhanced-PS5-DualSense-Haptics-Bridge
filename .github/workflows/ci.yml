@@ -18,8 +18,12 @@ jobs:
       - name: Verify SHA-256 manifest
         working-directory: ${{ github.workspace }}
         run: sha256sum --check SHA256SUMS.txt
+      - name: Go formatting
+        run: test -z "$(gofmt -l .)"
       - name: Unit tests
         run: go test ./...
+      - name: Race tests
+        run: go test -race ./...
       - name: Windows Bluetooth vet
         env:
           GOOS: windows
@@ -41,12 +45,12 @@ jobs:
           CGO_ENABLED: 0
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags='-s -w' -tags bluetooth -o dist/EnhancedPS5DualSenseHapticsBluetooth.exe .
-          go build -trimpath -ldflags='-s -w' -tags usb -o dist/EnhancedPS5DualSenseHapticsUSB.exe .
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -tags bluetooth -o dist/EnhancedPS5DualSenseHapticsBluetooth.exe .
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -tags usb -o dist/EnhancedPS5DualSenseHapticsUSB.exe .
           go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o dist/START_BRIDGE.exe ./launcher
           cp dist/START_BRIDGE.exe dist/START_BRIDGE_AND_BEAMNG.exe
           go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o dist/UPDATE_BRIDGE.exe ./updater
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-v1
+          name: windows-build
           path: Tools and diagnostics/Source/dist/*.exe

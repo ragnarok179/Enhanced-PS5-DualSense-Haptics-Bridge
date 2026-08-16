@@ -1,7 +1,7 @@
 {
-  "schema": 1,
-  "profile_version": "V1",
-  "reference": "V1 unified 48 kHz Common Feel Engine; USB direct, Bluetooth derived through a 48 kHz to 3 kHz transport adapter",
+  "schema": 2,
+  "profile_version": "V1.3",
+  "reference": "V1.3 calibration: USB remains the physical reference at 1.00; Bluetooth remains at 0.80. Haptic synthesis is unchanged; BeamNG Device.setRGB() is restored as the sole runtime lightbar writer on USB and Bluetooth.",
   "surface": {
     "low_speed": {
       "min_speed_ms": 0.25,
@@ -85,21 +85,25 @@
     }
   },
   "triggers": {
+    "l2": {
+      "normal_start_force": 0.125,
+      "normal_end_force": 0.5
+    },
     "abs": {
-      "release_strength_8": 0,
-      "lock_release_strength_8": 1,
-      "kick_strength_8": 6,
-      "base_strength_8": 1
+      "kick_force": 0.75,
+      "base_force": 0.125
     },
     "r2": {
-      "normal_start_strength_8": 1,
-      "normal_end_strength_8": 1,
-      "wheelspin_start_position_255": 26,
-      "wheelspin_end_position_255": 144,
-      "wheelspin_start_strength_255": 3,
-      "wheelspin_end_strength_255": 1,
-      "shift_position_255": 0,
-      "shift_strength_255": 1,
+      "normal_start_force": 0.125,
+      "normal_end_force": 0.125,
+      "wheelspin_start_position": 0.10196078431372549,
+      "wheelspin_end_position": 0.5647058823529412,
+      "wheelspin_start_force": 0.0625,
+      "wheelspin_end_force": 0.020833333333333332,
+      "airborne_position": 0.0,
+      "airborne_force": 0.020833333333333332,
+      "shift_position": 0.0,
+      "shift_force": 0.020833333333333332,
       "shift_duration_ms": 150
     }
   },
@@ -129,21 +133,21 @@
     }
   },
   "led": {
-    "first_ratio": 0.7,
+    "first_ratio": 0.5,
     "red_ratio": 0.95,
     "blink_only_on_rev_limiter": true,
     "blink_min_ratio": 0.92,
     "blink_hz": 8.0,
     "max_brightness": 220,
     "min_brightness": 48,
-    "off_ratio": 0.65,
+    "off_ratio": 0.45,
     "off_hold_ms": 300,
     "red_exit_ratio": 0.92,
     "blink_hold_ms": 180
   },
   "transport": {
     "usb_output_gain": 1.0,
-    "bluetooth_output_gain": 0.78,
-    "bluetooth_gain_basis": "Controller IMU comparison from paired USB/Bluetooth BeamNG logs; global transport compensation only, never per material or effect."
+    "bluetooth_output_gain": 0.8,
+    "bluetooth_gain_basis": "USB is the physical reference at 1.00. Physical A/B testing found the previous 0.86-0.875 Bluetooth calibration still perceptually too strong, so V1.3 uses 0.80 globally. No per-effect transport gain is applied."
   }
 }

@@ -1,5 +1,10 @@
 @echo off
-setlocal
-set "LOGDIR=%~dp0Logs"
-if not exist "%LOGDIR%" mkdir "%LOGDIR%"
-start "" explorer "%LOGDIR%"
+setlocal EnableExtensions DisableDelayedExpansion
+call "%~dp0_DIAGNOSTIC_ENV.bat"
+if not exist "%DPH_LOGS%" mkdir "%DPH_LOGS%"
+start "" explorer.exe "%DPH_LOGS%"
+if errorlevel 1 (
+  echo ERROR: Could not open:
+  echo "%DPH_LOGS%"
+  pause
+)

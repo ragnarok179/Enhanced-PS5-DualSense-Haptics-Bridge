@@ -3,7 +3,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -16,51 +15,7 @@ import (
 	"time"
 )
 
-const bridgeVersion = "V1"
 const telemetryAddress = "127.0.0.1:6974"
-const ownerBeaconGEAddress = "127.0.0.1:6975"
-const ownerBeaconVehicleAddress = "127.0.0.1:6976"
-
-const (
-	dualSenseBluetoothLEDConnectionComplete = uint32(10200000)
-	dualSenseSensorTicksPerSecond           = 3000000.0
-	dualSenseBluetoothLEDFallbackDelay      = 3500 * time.Millisecond
-	dualSenseBluetoothLEDSafetyMargin       = 50 * time.Millisecond
-)
-
-func bluetoothSensorTimestamp(report []byte) (uint32, bool) {
-	// Enhanced Bluetooth input report: byte 0 = 0x31, common state begins
-	// at byte 2, and the 32-bit sensor timestamp is offset 27 in that state.
-	if len(report) < 33 || report[0] != 0x31 {
-		return 0, false
-	}
-	return binary.LittleEndian.Uint32(report[29:33]), true
-}
-
-func bluetoothLEDReleaseDelay(timestamp uint32, valid bool) time.Duration {
-	if !valid {
-		return dualSenseBluetoothLEDFallbackDelay
-	}
-	if timestamp >= dualSenseBluetoothLEDConnectionComplete {
-		return 0
-	}
-	remainingTicks := float64(dualSenseBluetoothLEDConnectionComplete - timestamp)
-	remaining := time.Duration(remainingTicks / dualSenseSensorTicksPerSecond * float64(time.Second))
-	return remaining + dualSenseBluetoothLEDSafetyMargin
-}
-
-func scheduleBluetoothLEDRelease(d *device, now time.Time) (time.Time, uint32, bool, error) {
-	report, err := d.readReportOnce()
-	if err != nil {
-		return now.Add(dualSenseBluetoothLEDFallbackDelay), 0, false, err
-	}
-	timestamp, valid := bluetoothSensorTimestamp(report)
-	delay := bluetoothLEDReleaseDelay(timestamp, valid)
-	if !valid {
-		return now.Add(delay), 0, false, fmt.Errorf("unexpected Bluetooth input report (len=%d id=0x%02X)", len(report), report[0])
-	}
-	return now.Add(delay), timestamp, true, nil
-}
 
 type btProtocol int
 
@@ -94,7 +49,7 @@ func makeHapticReport(p btProtocol, seq, counter byte, samples []int8, outputLen
 		return buildBluetoothHapticReport39(seq, counter, samples, outputLen)
 	}
 	if p == protocol36 {
-		return buildBluetoothAllInOneReport36(seq, counter, samples, buildBluetoothSetStateData63(telemetry{}, [3]byte{}))
+		return buildBluetoothAllInOneReport36(seq, counter, samples, buildBluetoothSetStateData63(telemetry{}))
 	}
 	return buildBluetoothHapticReport32(seq, counter, samples, outputLen)
 }
@@ -104,7 +59,7 @@ func main() {
 	runtime.LockOSThread()
 	endRealtime := enableRealtimeScheduling()
 	defer endRealtime()
-	probe, test, testBumpCarrier, testAll, testControl, list, hapticsOnly, restoreOnly, showProfile, rgbViaBeamNG, rawBumpsOnly := false, false, false, false, false, false, false, false, false, true, false
+	probe, test, testBumpCarrier, testAll, testControl, list, hapticsOnly, restoreOnly, showProfile, rawBumpsOnly, diagnosticStatus := false, false, false, false, false, false, false, false, false, false, false
 	protocol := protocol36
 	stopFile := ""
 	args := os.Args[1:]
@@ -123,12 +78,11 @@ func main() {
 			testControl = true
 		case "--haptics-only":
 			hapticsOnly = true
-		case "--rgb-via-beamng":
-			rgbViaBeamNG = true
-		case "--rgb-via-bridge":
-			rgbViaBeamNG = false
 		case "--raw-bumps-only":
 			rawBumpsOnly = true
+			diagnosticStatus = true
+		case "--diagnostic-status":
+			diagnosticStatus = true
 		case "--restore-audio-haptics":
 			restoreOnly = true
 		case "--list":
@@ -148,6 +102,7 @@ func main() {
 			}
 		}
 	}
+	setRuntimeDiagnosticsEnabled(diagnosticStatus)
 	if showProfile {
 		version, path, hash := feelProfileInfo()
 		fmt.Printf("Common Feel Engine|version=%s|path=%s|sha256=%s\n", version, path, hash)
@@ -169,6 +124,7 @@ func main() {
 		fmt.Printf("Bluetooth|%s|input=%d|output=%d\n", d.product, d.inputLen, d.outputLen)
 		return
 	}
+	ensureUserSettings()
 	if list {
 		fmt.Printf("%s — input %d / output Windows %d\n", d.product, d.inputLen, d.outputLen)
 		return
@@ -186,17 +142,20 @@ func main() {
 		return
 	}
 
-	fmt.Println("DualSense Bluetooth Spatial Haptics", bridgeVersion)
-	fmt.Printf("Connected: %s - Windows HID capacity %d bytes\n", d.product, d.outputLen)
-	fmt.Println("Transport: unchanged 0x36 path for L2/R2 + haptics; RGB is owned by BeamNG custom Device.setRGB() by default.")
-	profileVersion, profilePath, profileHash := feelProfileInfo()
-	if profileHash != "" {
-		fmt.Printf("Common Feel Engine: profile %s - %s - SHA-256 %.12s...\n", profileVersion, profilePath, profileHash)
-	} else {
-		fmt.Printf("Common Feel Engine: profile %s - built-in fallback values.\n", profileVersion)
+	fmt.Printf("Enhanced PS5 DualSense Haptics %s\n", currentBridgeVersion)
+	fmt.Printf("Controller: %s (Bluetooth)\n", d.product)
+	if diagnosticStatus {
+		fmt.Printf("Windows HID capacity: %d bytes\n", d.outputLen)
+		profileVersion, profilePath, profileHash := feelProfileInfo()
+		if profileHash != "" {
+			fmt.Printf("Common Feel Engine: profile %s - %s - SHA-256 %.12s...\n", profileVersion, profilePath, profileHash)
+		} else {
+			fmt.Printf("Common Feel Engine: profile %s - built-in fallback values.\n", profileVersion)
+		}
+		transportProfile := feelProfile().Transport
+		fmt.Printf("Transport calibration: Bluetooth %.2f / USB %.2f\n", transportProfile.BluetoothOutputGain, transportProfile.USBOutputGain)
+		fmt.Println("Controller settings:", userSettingsSummary())
 	}
-	transportProfile := feelProfile().Transport
-	fmt.Printf("Transport calibration: Bluetooth output gain %.2f (USB reference %.2f).\n", transportProfile.BluetoothOutputGain, transportProfile.USBOutputGain)
 	if testAll {
 		fmt.Println("Comparative transport test. Close the main bridge before running it.")
 		fmt.Println("=== FORMAT 0x32 SAxense ===")
@@ -222,18 +181,12 @@ func main() {
 		return
 	}
 
-	fmt.Println("Active transport:", protocol.String())
-	if rgbViaBeamNG {
-		fmt.Println("Bluetooth RGB: owned by the BeamNG mod through Device.setRGB(); the bridge sends no runtime LED command.")
-		fmt.Println("The bridge owns only L2/R2 + 0x36 haptics and publishes no RGB ownership beacons.")
-	} else {
-		fmt.Println("Single Bluetooth HID owner: one thread serializes 0x31 LED and 0x36 haptic traffic.")
-		fmt.Println("Bluetooth LED: RELEASE_LEDS and RGB use only the standard 0x31/78-byte report; the continuous 0x36 stream carries no LED flags.")
-	}
-	fmt.Println("L2/R2 and PCM remain strictly on the 0x36 path.")
-	fmt.Println("No second bridge may write to the controller over Bluetooth.")
-	if hapticsOnly {
-		fmt.Println("Diagnostic mode: exact 0x32 stream with no L2/R2/LED updates after initialization.")
+	if diagnosticStatus {
+		fmt.Println("Active transport:", protocol.String())
+		fmt.Println("Bluetooth RGB: BeamNG Device.setRGB() owner.")
+		if hapticsOnly {
+			fmt.Println("Diagnostic haptics-only mode active.")
+		}
 	}
 	conn, err := net.ListenUDP("udp", mustUDPAddr(telemetryAddress))
 	if err != nil {
@@ -241,23 +194,12 @@ func main() {
 		os.Exit(2)
 	}
 	defer conn.Close()
-	fmt.Println("Bluetooth telemetry: UDP", telemetryAddress)
-
-	var ownerConnGE, ownerConnVehicle *net.UDPConn
-	if !rgbViaBeamNG {
-		ownerConnGE, _ = net.DialUDP("udp", nil, mustUDPAddr(ownerBeaconGEAddress))
-		ownerConnVehicle, _ = net.DialUDP("udp", nil, mustUDPAddr(ownerBeaconVehicleAddress))
-		if ownerConnGE != nil {
-			defer ownerConnGE.Close()
-			_, _ = ownerConnGE.Write([]byte("DPH_BT_OWNER_ACTIVE"))
-		}
-		if ownerConnVehicle != nil {
-			defer ownerConnVehicle.Close()
-			_, _ = ownerConnVehicle.Write([]byte("DPH_BT_OWNER_ACTIVE"))
-		}
+	if diagnosticStatus {
+		fmt.Println("Bluetooth telemetry: UDP", telemetryAddress)
 	}
+	fmt.Println("Waiting for BeamNG.drive...")
 
-	mixer := newCanonicalHapticMixer()
+	mixer := newCanonicalHapticMixerForTransport(transportBluetooth)
 	var rawBumps *rawBumpRenderer
 	if rawBumpsOnly {
 		rawBumps = newRawBumpRenderer()
@@ -265,6 +207,9 @@ func main() {
 		fmt.Println("BeamNG native vibration must remain DISABLED for this test.")
 	}
 	done := make(chan struct{})
+	if diagnosticStatus {
+		startConsoleSettingsMenu(done)
+	}
 	var stopOnce sync.Once
 	requestStop := func() {
 		stopOnce.Do(func() {
@@ -294,6 +239,8 @@ func main() {
 			}
 		}()
 	}
+	var beamNGConnectedOnce sync.Once
+	compatibilityGuard := &protocolCompatibilityGuard{}
 	go func() {
 		buf := make([]byte, 65535)
 		for {
@@ -306,7 +253,15 @@ func main() {
 					continue
 				}
 			}
+			if compatibilityGuard.handlePacket(buf[:n], diagnosticStatus, requestStop) {
+				continue
+			}
 			if t, ok := decodeTelemetry(buf[:n]); ok {
+				if !shouldConsumeTelemetry(t) {
+					continue
+				}
+				compatibilityGuard.markCompatible()
+				beamNGConnectedOnce.Do(func() { fmt.Println(beamNGConnectionMessage(t)) })
 				packetNow := time.Now()
 				mixer.update(t, packetNow)
 				if rawBumps != nil {
@@ -318,40 +273,19 @@ func main() {
 
 	frames := framesForProtocol(protocol)
 	interval := time.Second * time.Duration(frames) / bluetoothHapticSampleRate
-	controlSeq, hapticSeq, audioCounter := startupControlSeq, byte(0), byte(0)
-	lastStatus, lastOwnerBeacon := time.Time{}, time.Time{}
+	_, hapticSeq, audioCounter := startupControlSeq, byte(0), byte(0)
+	lastStatus := time.Time{}
 	feelEngine := newSharedFeelEngine(mixer)
 	pcmStream := newCanonicalPCMStream()
+	report36Builder := &bluetoothReport36Builder{}
 	writeErrors, writes := 0, 0
 	firstHeaderLogged := false
-	var lastSentRGB [3]byte
-	ledSynced := false
-	lastLEDWrite := time.Time{}
-	ledUpdateCount := 0
-	ledReleased := protocol != protocol36 || rgbViaBeamNG
-	ledReleaseAt := time.Now()
-	ledColorReadyAt := time.Time{}
-	if protocol == protocol36 && !rgbViaBeamNG {
-		var sensorTimestamp uint32
-		var sensorValid bool
-		var scheduleErr error
-		ledReleaseAt, sensorTimestamp, sensorValid, scheduleErr = scheduleBluetoothLEDRelease(d, time.Now())
-		if sensorValid {
-			delay := time.Until(ledReleaseAt)
-			if delay < 0 {
-				delay = 0
-			}
-			fmt.Printf("Bluetooth LED sequence: sensor timestamp=%d, RELEASE_LEDS in %.0f ms.\n", sensorTimestamp, float64(delay)/float64(time.Millisecond))
-		} else {
-			fmt.Printf("Bluetooth LED sequence: timestamp unavailable (%v), safe fallback delay %.0f ms.\n", scheduleErr, float64(dualSenseBluetoothLEDFallbackDelay)/float64(time.Millisecond))
-		}
-	}
 
 	// Runtime timing metrics. A successful WriteFile only confirms that Windows
 	// accepted the buffer; these counters reveal missed haptic deadlines.
 	var hapticWriteTotal time.Duration
 	var hapticWriteMax time.Duration
-	lateTicks, severeLateTicks, nonSilentReports, silentReports := 0, 0, 0, 0
+	lateTicks, severeLateTicks := 0, 0
 	var maxLateness time.Duration
 	statusBaseWrites := 0
 	statusBaseLate, statusBaseSevere := 0, 0
@@ -361,8 +295,9 @@ func main() {
 		if !waitUntil(deadline, done) {
 			neutral := telemetry{Version: protocolVersion, Active: false}
 			if protocol == protocol36 {
+				var silence [64]int8
 				for i := 0; i < 6; i++ {
-					report := buildBluetoothAllInOneReport36(hapticSeq, audioCounter, make([]int8, 64), buildBluetoothSetStateData63WithFlags(neutral, [3]byte{}, false, false))
+					report := report36Builder.build(hapticSeq, audioCounter, silence[:], neutral)
 					_ = d.writeReportExact(report)
 					hapticSeq = (hapticSeq + 1) & 0x0F
 					audioCounter++
@@ -370,12 +305,6 @@ func main() {
 				}
 			} else {
 				sendSilence(d, protocol, &hapticSeq, &audioCounter, 6)
-			}
-			if ownerConnGE != nil {
-				_, _ = ownerConnGE.Write([]byte("DPH_BT_OWNER_OFF"))
-			}
-			if ownerConnVehicle != nil {
-				_, _ = ownerConnVehicle.Write([]byte("DPH_BT_OWNER_OFF"))
 			}
 			if stopFile != "" {
 				_ = os.Remove(stopFile)
@@ -400,16 +329,6 @@ func main() {
 			deadline = now.Add(interval)
 		}
 
-		if !rgbViaBeamNG && (lastOwnerBeacon.IsZero() || now.Sub(lastOwnerBeacon) >= 200*time.Millisecond) {
-			if ownerConnGE != nil {
-				_, _ = ownerConnGE.Write([]byte("DPH_BT_OWNER_ACTIVE"))
-			}
-			if ownerConnVehicle != nil {
-				_, _ = ownerConnVehicle.Write([]byte("DPH_BT_OWNER_ACTIVE"))
-			}
-			lastOwnerBeacon = now
-		}
-
 		latest, lastPacket := mixer.snapshot()
 		canonicalFrames := canonicalFramesForBluetoothFrames(frames)
 		frame := feelEngine.step(latest, lastPacket, now, canonicalFrames)
@@ -420,55 +339,17 @@ func main() {
 		if rawBumps != nil {
 			canonicalSamples = rawBumps.render(canonicalFrames, canonicalHapticSampleRate, now)
 		}
-		samples := pcmStream.process(canonicalSamples).Bluetooth3k
+		samples := pcmStream.processBluetooth(canonicalSamples)
 
-		if countNonSilent(samples) > 0 {
-			nonSilentReports++
-		} else {
-			silentReports++
-		}
 		var report []byte
 		if protocol == protocol36 {
-			if !rgbViaBeamNG {
-				// The three hardware probes showed that a fixed 0x36 stream is stable,
-				// and that a standard 0x31 lightbar command can coexist with that stream.
-				// Keep the proven haptic/trigger packet unchanged except that it
-				// never owns LED flags. Serialize the short 0x31 immediately before the
-				// next 0x36 so there is still only one HID writer.
-				if !ledReleased && !now.Before(ledReleaseAt) {
-					release := finalizeBluetoothControlReport(buildBluetoothControlBase(controlSeq, 0, 0x08))
-					if ledErr := d.writeReportExact(release); ledErr != nil {
-						fmt.Println("RELEASE_LEDS 0x31:", ledErr)
-					} else {
-						controlSeq = (controlSeq + 1) & 0x0F
-						ledReleased = true
-						ledSynced = false
-						ledColorReadyAt = now.Add(30 * time.Millisecond)
-					}
-				}
-				if ledReleased && !now.Before(ledColorReadyAt) &&
-					bluetoothLightbarUpdateDue(ledSynced, lastSentRGB, rgb, lastLEDWrite, now, frame.LEDStatus == "blink") {
-					color := buildBluetoothControlReportMasked(controlSeq, controlState, rgb, d.outputLen, false, true)
-					if ledErr := d.writeReportExact(color); ledErr != nil {
-						fmt.Println("RGB 0x31:", ledErr)
-					} else {
-						controlSeq = (controlSeq + 1) & 0x0F
-						lastSentRGB, lastLEDWrite, ledSynced = rgb, now, true
-						ledUpdateCount++
-					}
-				}
-			}
-			var state63 []byte
-			if rgbViaBeamNG {
-				state63 = buildBluetoothSetStateData63ExternalRGB(controlState)
-			} else {
-				state63 = buildBluetoothSetStateData63WithFlags(controlState, rgb, false, false)
-			}
-			report = buildBluetoothAllInOneReport36(hapticSeq, audioCounter, samples, state63)
+			// BeamNG Device.setRGB() is the sole lightbar writer. Keep every
+			// runtime 0x36 state neutral with respect to RGB ownership.
+			report = report36Builder.build(hapticSeq, audioCounter, samples, controlState)
 		} else {
 			report = makeHapticReport(protocol, hapticSeq, audioCounter, samples, d.outputLen)
 		}
-		if !firstHeaderLogged {
+		if diagnosticStatus && !firstHeaderLogged {
 			headerLen := 16
 			if len(report) < headerLen {
 				headerLen = len(report)
@@ -500,7 +381,7 @@ func main() {
 			writeErrors = 0
 		}
 
-		if lastStatus.IsZero() || now.Sub(lastStatus) >= time.Second {
+		if diagnosticStatus && (lastStatus.IsZero() || now.Sub(lastStatus) >= time.Second) {
 			state := "packets sent"
 			if status.stale {
 				state = "waiting for BeamNG"
@@ -532,9 +413,9 @@ func main() {
 				corrConfidence = latest.Raw.NativeBumpSourceConfidence
 				corrPending = latest.Raw.NativeBumpPending
 			}
-			fmt.Printf("%s all=%d(+%d/s) late=%d severe=%d max=%.2fms write=%.0fus max=%.2fms — LED=%s RGB=%02X%02X%02X ledWrites=%d L2=%d R2=%d L:%s %.2f R:%s %.2f slip %.2f/%.2f phys=%t/%d %.2f/%.2f corr=%s %.0fms/%.2f %.0fms/%.2f src=%.2f c=%.2f/%.2f j=%.2f/%.2f s=%.2f/%.2f p=%.2f/%.2f pending=%t nz=%d voices=%d rms=%.2f peak=%.2f\n",
+			fmt.Printf("%s all=%d(+%d/s) late=%d severe=%d max=%.2fms write=%.0fus max=%.2fms — LED=%s/BeamNG RGB=%02X%02X%02X L2=%d R2=%d L:%s %.2f R:%s %.2f slip %.2f/%.2f phys=%t/%d %.2f/%.2f corr=%s %.0fms/%.2f %.0fms/%.2f src=%.2f c=%.2f/%.2f j=%.2f/%.2f s=%.2f/%.2f p=%.2f/%.2f pending=%t nz=%d voices=%d rms=%.2f peak=%.2f\n",
 				state, writes, dw, dl, ds, float64(maxLateness)/float64(time.Millisecond),
-				avgHapticUS, float64(hapticWriteMax)/float64(time.Millisecond), frame.LEDStatus, rgb[0], rgb[1], rgb[2], ledUpdateCount, controlState.L2Mode, controlState.R2Mode,
+				avgHapticUS, float64(hapticWriteMax)/float64(time.Millisecond), frame.LEDStatus, rgb[0], rgb[1], rgb[2], controlState.L2Mode, controlState.R2Mode,
 				status.profileL, status.surfaceL, status.profileR, status.surfaceR, status.slipL, status.slipR, physicsHook, physicsSamples, physicsL, physicsR,
 				corrReason, corrLMS, corrLCue, corrRMS, corrRCue,
 				corrConfidence, corrLContact, corrRContact, corrLJolt, corrRJolt, corrLStress, corrRStress, corrLPeak, corrRPeak,
@@ -582,7 +463,7 @@ func runControlInterferenceTest(d *device, protocol btProtocol) {
 	fmt.Println("Phase B: same 0x31 reports at 20 Hz, always immediately BEFORE 0x32...")
 	neutral := telemetry{Version: protocolVersion, Active: true}
 	playContinuousTest(d, protocol, &hseq, &counter, func() {
-		_ = d.writeReport(buildBluetoothControlReport(cseq, neutral, [3]byte{0, 40, 0}, d.outputLen))
+		_ = d.writeReport(buildBluetoothTriggerControlReport(cseq, neutral, d.outputLen))
 		cseq = (cseq + 1) & 0x0F
 	}, 5000)
 	sendSilence(d, protocol, &hseq, &counter, 10)
@@ -612,7 +493,7 @@ func playContinuousTest(d *device, protocol btProtocol, seq, counter *byte, cont
 			control()
 			lastControl = time.Now()
 		}
-		samples := pcmStream.process(canonical).Bluetooth3k
+		samples := pcmStream.processBluetooth(canonical)
 		report := makeHapticReport(protocol, *seq, *counter, samples, d.outputLen)
 		if protocol == protocol36 {
 			_ = d.writeReportExact(report)
@@ -636,17 +517,6 @@ func initializeGamepadCoreBluetooth(d *device, seq *byte) error {
 		*seq = (*seq + 1) & 0x0F
 		time.Sleep(12 * time.Millisecond)
 	}
-	return nil
-}
-
-func restoreAudioHapticsMode(d *device, seq *byte) error {
-	neutral := telemetry{Version: protocolVersion, Active: false}
-	report := buildBluetoothControlReport(*seq, neutral, [3]byte{}, d.outputLen)
-	if err := d.writeReport(report); err != nil {
-		return err
-	}
-	*seq = (*seq + 1) & 0x0F
-	time.Sleep(12 * time.Millisecond)
 	return nil
 }
 
@@ -713,7 +583,7 @@ func runBumpCarrierTest(d *device, protocol btProtocol) {
 	}
 	time.Sleep(500 * time.Millisecond)
 	fmt.Println("3 CENTER bumps with equivalent energy...")
-	const center = 0.608 // 0.86 / sqrt(2)
+	const center = 0.566 // 0.80 / sqrt(2)
 	for i := 0; i < 3; i++ {
 		playTestVoice(d, m, pcmStream, protocol, &seq, &counter, "suspension_bump", center, center, 110)
 		time.Sleep(220 * time.Millisecond)
@@ -734,7 +604,7 @@ func playTestVoice(d *device, m *hapticMixer, pcmStream *canonicalPCMStream, pro
 	for time.Now().Before(end) {
 		canonicalFrames := canonicalFramesForBluetoothFrames(frames)
 		canonical, _ := m.render(canonicalFrames, time.Now())
-		samples := pcmStream.process(canonical).Bluetooth3k
+		samples := pcmStream.processBluetooth(canonical)
 		report := makeHapticReport(protocol, *seq, *counter, samples, d.outputLen)
 		var writeErr error
 		if protocol == protocol36 {

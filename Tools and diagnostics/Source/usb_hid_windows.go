@@ -218,7 +218,9 @@ func (d *device) writeReport(report []byte) error {
 		wire = make([]byte, d.outputLen)
 		copy(wire, report)
 		if !d.writeNormalizationLogged {
-			fmt.Printf("Windows HID route validated: logical %d-byte report padded to %d bytes.\n", len(report), len(wire))
+			if runtimeDiagnosticsEnabled() {
+				fmt.Printf("Windows HID route validated: logical %d-byte report padded to %d bytes.\n", len(report), len(wire))
+			}
 			d.writeNormalizationLogged = true
 		}
 	}

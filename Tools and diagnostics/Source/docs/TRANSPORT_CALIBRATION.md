@@ -34,19 +34,21 @@ stereo before Bluetooth transport.
 
 ## V1 calibration policy
 
-V1 uses no per-material or per-effect transport compensation. The USB path is
-also intentionally unfiltered at the transport boundary so future Bluetooth
-changes cannot silently change the wired reference feel.
+USB is the physical reference and is not altered to imitate Bluetooth.
 
-The only compensation is:
+V1.3 keeps USB as the physical reference. Follow-up physical A/B testing found the later 0.86-0.875 Bluetooth values still perceptually too strong, so the requested global calibration is:
 
-- USB gain: `1.00`
-- Bluetooth gain: `0.78`
+- USB global PCM gain: `1.00`
+- Bluetooth global PCM gain: `0.80`
 
-The Bluetooth value is an initial controller-specific estimate derived from
-paired USB/Bluetooth BeamNG sessions and controller IMU measurements. Because
-shared-mode endpoint/session settings can vary by machine, it should be treated
-as a practical default rather than a universal physical constant.
+There is no suspension-bump-specific transport multiplier. Bumps,
+collisions, landings, surfaces, shifts and generic engine/tyre haptics all use
+the same canonical effect balance; only the final transport representation
+differs.
+
+Triggers are not PCM and do not use this calibration. USB and Bluetooth use the
+same semantic trigger model and the same final trigger-effect encoder. LEDs do
+not use PCM transport gains. BeamNG `Device.setRGB()` is the sole runtime lightbar writer on both transports; the Bridge keeps LED-valid HID fields clear.
 
 ## Recommended calibration procedure
 
@@ -57,6 +59,7 @@ For a new controller/PC:
 3. Run the Bluetooth stereo diagnostic with the same source effect.
 4. Compare physical strength (preferably with a repeatable accelerometer/IMU
    measurement rather than perception alone).
-5. Change only `bluetooth_output_gain` or `usb_output_gain`.
-6. Do not change individual surface, bump or collision gains to compensate for
-   transport differences.
+5. Use the global transport gains only for a transport-wide mismatch.
+6. If a repeatable physical mismatch is isolated to one effect family, keep the
+   correction centralized in `transport_calibration.go`; do not scatter per-material
+   or per-effect transport multipliers through gameplay code.

@@ -38,22 +38,26 @@ type feelProfileConfig struct {
 		BluetoothGainBasis  string  `json:"bluetooth_gain_basis"`
 	} `json:"transport"`
 	Triggers struct {
+		L2 struct {
+			NormalStartForce float64 `json:"normal_start_force"`
+			NormalEndForce   float64 `json:"normal_end_force"`
+		} `json:"l2"`
 		ABS struct {
-			ReleaseStrength8     int `json:"release_strength_8"`
-			LockReleaseStrength8 int `json:"lock_release_strength_8"`
-			KickStrength8        int `json:"kick_strength_8"`
-			BaseStrength8        int `json:"base_strength_8"`
+			KickForce float64 `json:"kick_force"`
+			BaseForce float64 `json:"base_force"`
 		} `json:"abs"`
 		R2 struct {
-			NormalStartStrength8      int     `json:"normal_start_strength_8"`
-			NormalEndStrength8        int     `json:"normal_end_strength_8"`
-			WheelspinStartPosition255 float64 `json:"wheelspin_start_position_255"`
-			WheelspinEndPosition255   float64 `json:"wheelspin_end_position_255"`
-			WheelspinStartStrength255 float64 `json:"wheelspin_start_strength_255"`
-			WheelspinEndStrength255   float64 `json:"wheelspin_end_strength_255"`
-			ShiftPosition255          int     `json:"shift_position_255"`
-			ShiftStrength255          int     `json:"shift_strength_255"`
-			ShiftDurationMS           int     `json:"shift_duration_ms"`
+			NormalStartForce       float64 `json:"normal_start_force"`
+			NormalEndForce         float64 `json:"normal_end_force"`
+			WheelspinStartPosition float64 `json:"wheelspin_start_position"`
+			WheelspinEndPosition   float64 `json:"wheelspin_end_position"`
+			WheelspinStartForce    float64 `json:"wheelspin_start_force"`
+			WheelspinEndForce      float64 `json:"wheelspin_end_force"`
+			AirbornePosition       float64 `json:"airborne_position"`
+			AirborneForce          float64 `json:"airborne_force"`
+			ShiftPosition          float64 `json:"shift_position"`
+			ShiftForce             float64 `json:"shift_force"`
+			ShiftDurationMS        int     `json:"shift_duration_ms"`
 		} `json:"r2"`
 	} `json:"triggers"`
 	ShiftHaptic struct {
@@ -105,9 +109,9 @@ var (
 
 func defaultFeelProfile() feelProfileConfig {
 	var p feelProfileConfig
-	p.Schema = 1
-	p.ProfileVersion = "V1"
-	p.Reference = "V1 unified 48 kHz Common Feel Engine; USB direct, Bluetooth derived by 48 kHz to 3 kHz transport adapter"
+	p.Schema = 2
+	p.ProfileVersion = "V1.3"
+	p.Reference = "V1.3: USB remains the haptic reference at 1.00 and Bluetooth at 0.80. Lightbar ownership is restored to BeamNG Device.setRGB() on both transports."
 	p.Surface.LowSpeed.MinSpeedMS = 0.25
 	p.Surface.LowSpeed.FullSpeedMS = 6.0
 	p.Surface.LowSpeed.MinAmplitudeScale = 0.16
@@ -121,26 +125,29 @@ func defaultFeelProfile() feelProfileConfig {
 	p.Surface.LowSpeed.HighSpeedCarrierDivisor = 28.0
 	p.Surface.LowSpeed.HighSpeedCarrierMax = 1.8
 	p.Transport.USBOutputGain = 1.0
-	p.Transport.BluetoothOutputGain = 0.78
-	p.Transport.BluetoothGainBasis = "Controller IMU comparison from paired USB/Bluetooth BeamNG logs; global transport compensation only."
+	p.Transport.BluetoothOutputGain = 0.80
+	p.Transport.BluetoothGainBasis = "USB is the physical reference at 1.00. Physical A/B testing found the previous 0.86-0.875 Bluetooth calibration still perceptually too strong, so V1.3 keeps 0.80 globally. No per-effect transport gain is applied."
 	p.Surface.SyntheticCooldownMS = map[string]cooldownPair{
 		"asphalt": {800, 140}, "asphalt_wet": {800, 140}, "slippery": {800, 140}, "ice": {800, 140},
 		"sand": {520, 95}, "mud": {520, 95}, "grass": {460, 95}, "snow": {460, 95},
 		"dirt": {420, 70}, "dusty_dirt": {420, 70}, "sandy_road": {420, 70}, "gravel": {320, 45},
 		"rock": {460, 90}, "cobblestone": {300, 55}, "rumble_strip": {240, 35}, "default": {360, 80},
 	}
-	p.Triggers.ABS.KickStrength8 = 6
-	p.Triggers.ABS.BaseStrength8 = 1
-	p.Triggers.ABS.ReleaseStrength8 = 0
-	p.Triggers.ABS.LockReleaseStrength8 = 1
-	p.Triggers.R2.NormalStartStrength8 = 1
-	p.Triggers.R2.NormalEndStrength8 = 1
-	p.Triggers.R2.WheelspinStartPosition255 = 26
-	p.Triggers.R2.WheelspinEndPosition255 = 144
-	p.Triggers.R2.WheelspinStartStrength255 = 3
-	p.Triggers.R2.WheelspinEndStrength255 = 1
-	p.Triggers.R2.ShiftPosition255 = 0
-	p.Triggers.R2.ShiftStrength255 = 1
+	// Gameplay trigger calibration uses normalized unit values.
+	p.Triggers.L2.NormalStartForce = 6.0 / 48.0
+	p.Triggers.L2.NormalEndForce = 24.0 / 48.0
+	p.Triggers.ABS.KickForce = 36.0 / 48.0
+	p.Triggers.ABS.BaseForce = 6.0 / 48.0
+	p.Triggers.R2.NormalStartForce = 6.0 / 48.0
+	p.Triggers.R2.NormalEndForce = 6.0 / 48.0
+	p.Triggers.R2.WheelspinStartPosition = 0.10196078431372549
+	p.Triggers.R2.WheelspinEndPosition = 0.5647058823529412
+	p.Triggers.R2.WheelspinStartForce = 0.0625
+	p.Triggers.R2.WheelspinEndForce = 0.020833333333333332
+	p.Triggers.R2.AirbornePosition = 0
+	p.Triggers.R2.AirborneForce = 0.020833333333333332
+	p.Triggers.R2.ShiftPosition = 0
+	p.Triggers.R2.ShiftForce = 0.020833333333333332
 	p.Triggers.R2.ShiftDurationMS = 150
 	p.ShiftHaptic.MinStrength = 0.11
 	p.ShiftHaptic.MaxStrength = 0.15
@@ -154,8 +161,8 @@ func defaultFeelProfile() feelProfileConfig {
 	p.BodyIsolation.Landing.HardAttackMS, p.BodyIsolation.Landing.ReleaseEndMS = 28, 96
 	p.BodyIsolation.SuspensionBump.HardAttackMS, p.BodyIsolation.SuspensionBump.ReleaseEndMS = 128, 150
 	p.BodyIsolation.SuspensionBump.OppositeMergeWindowMS = 8
-	p.LED.FirstRatio = 0.70
-	p.LED.OffRatio = 0.65
+	p.LED.FirstRatio = 0.50
+	p.LED.OffRatio = 0.45
 	p.LED.OffHoldMS = 300
 	p.LED.RedRatio = 0.95
 	p.LED.RedExitRatio = 0.92
@@ -197,7 +204,7 @@ func ensureFeelProfile() {
 				continue
 			}
 			loaded := defaultFeelProfile()
-			if json.Unmarshal(data, &loaded) != nil || loaded.Schema != 1 || loaded.ProfileVersion == "" {
+			if json.Unmarshal(data, &loaded) != nil || loaded.Schema != 2 || loaded.ProfileVersion == "" {
 				continue
 			}
 			sharedFeelProfile = loaded

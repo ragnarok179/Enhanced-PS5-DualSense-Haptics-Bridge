@@ -3,3 +3,6 @@ Tools and diagnostics/Diagnostics/Logs/*
 Tools and diagnostics/Source/dist/
 *.tmp
 .DS_Store
+Tools and diagnostics/Config/user_settings.json
+
+Tools and diagnostics/Config/pending_bridge_compatibility.json

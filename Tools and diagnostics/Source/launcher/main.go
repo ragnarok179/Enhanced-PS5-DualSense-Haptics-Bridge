@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,18 +54,28 @@ func run() int {
 		return 2
 	}
 
-	if probe(usbPath, bridgeDir) {
+	usbProbe := probe(usbPath, bridgeDir)
+	if usbProbe.detected {
 		fmt.Println("Enhanced PS5 DualSense Haptics - USB")
 		return runBridge(usbPath, bridgeDir)
 	}
 
-	if probe(bluetoothPath, bridgeDir) {
+	btProbe := probe(bluetoothPath, bridgeDir)
+	if btProbe.detected {
 		fmt.Println("Enhanced PS5 DualSense Haptics - Bluetooth")
-		return runBridge(bluetoothPath, bridgeDir, "--protocol-36", "--rgb-via-beamng")
+		return runBridge(bluetoothPath, bridgeDir, "--protocol-36")
 	}
 
 	fmt.Fprintln(os.Stderr, "ERROR: no compatible DualSense controller was detected over USB or Bluetooth.")
-	fmt.Fprintln(os.Stderr, `Open "Tools and diagnostics\Diagnostics\LIST_HARDWARE.bat" for more information.`)
+	printProbeFailure("USB", usbProbe)
+	printProbeFailure("Bluetooth", btProbe)
+
+	diagnosticPath := filepath.Join(root, "Tools and diagnostics", "Diagnostics", "LIST_HARDWARE.bat")
+	if fileExists(diagnosticPath) {
+		fmt.Fprintf(os.Stderr, "Hardware diagnostics: %s\n", diagnosticPath)
+	} else {
+		fmt.Fprintf(os.Stderr, "ERROR: hardware diagnostics file is missing: %s\n", diagnosticPath)
+	}
 	return 1
 }
 
@@ -75,12 +84,42 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func probe(path, workingDirectory string) bool {
+type probeResult struct {
+	detected bool
+	exitCode int
+	output   string
+	err      error
+}
+
+func probe(path, workingDirectory string) probeResult {
 	cmd := exec.Command(path, "--probe")
 	cmd.Dir = workingDirectory
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	return cmd.Run() == nil
+	output, err := cmd.CombinedOutput()
+	result := probeResult{output: strings.TrimSpace(string(output)), err: err}
+	if err == nil {
+		result.detected = true
+		return result
+	}
+	if exitError, ok := err.(*exec.ExitError); ok {
+		result.exitCode = exitError.ExitCode()
+	} else {
+		result.exitCode = -1
+	}
+	return result
+}
+
+func printProbeFailure(name string, result probeResult) {
+	if result.err == nil {
+		return
+	}
+	if result.output != "" {
+		fmt.Fprintf(os.Stderr, "%s probe: %s\n", name, result.output)
+	}
+	// Exit code 1 is the normal "controller not present on this transport" result.
+	// Other failures need to stay visible instead of being misreported as no controller.
+	if result.exitCode != 1 {
+		fmt.Fprintf(os.Stderr, "%s probe failed (exit %d): %v\n", name, result.exitCode, result.err)
+	}
 }
 
 func runBridge(path, workingDirectory string, args ...string) int {

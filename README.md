@@ -12,7 +12,7 @@ Once installed, simply connect the controller and start the Bridge.
 ## Main features
 
 - **HD stereo haptics:** surfaces, suspension, bumps, collisions, landings, tyres, transmission, etc.
-- **Adaptive triggers:** L2 braking/ABS/wheel lock and R2 throttle/wheelspin/TCS/shift feedback and airborn mode.
+- **Adaptive triggers:** L2 braking/ABS/wheel lock and R2 throttle/wheelspin/TCS/shift feedback and airborne mode.
 - **Dynamic lighting:** RPM-reactive DualSense lightbar and rev-limiter behavior.
 
 
@@ -24,27 +24,55 @@ Once installed, simply connect the controller and start the Bridge.
 4) Connect the DualSense through USB or Bluetooth.
 5) Run `START_BRIDGE.exe`, or use `START_BRIDGE_AND_BEAMNG.exe` to automatically start both the Bridge and BeamNG.drive.
 
-Notes :
+Notes:
 The Bridge can be launched at any time, before or after BeamNG.drive, as long as the DualSense is connected to the PC. No specific launch order is required.
 
 If you disconnect the DualSense or switch between USB and Bluetooth, reconnect the controller and restart the Bridge.
 
 For a more precise and spatialized experience, it is recommended to use the DualSense controller via wired USB rather than Bluetooth. Bluetooth uses a lower-bandwidth haptic transport and cannot reproduce the full HD haptic detail available over USB.
 
+The USB path uses a low-latency WASAPI queue and avoids keeping the Windows audio buffer permanently filled with silence. This reduces the delay that could be felt in earlier USB builds.
 
-## Optional manual updater
 
-Run `UPDATE_BRIDGE.exe` whenever you want to check for a newer stable Bridge release.
+## Controller settings
 
-The updater checks the latest stable GitHub Release and downloads the official `Enhanced_PS5_DualSense_Haptics_Bridge.zip` release asset. It does not update from the development `main` branch.
+Controller feedback can be configured directly inside BeamNG.drive. Open **Pause -> Mods -> DualSense Haptics Settings**, or use the **DualSense Haptics Settings** action in **Options -> Controls**. A default `O` binding is included and can be remapped.
 
-The downloaded package is verified with `SHA256SUMS.txt`, then the updater shows which managed files are new, changed or obsolete before asking for confirmation.
+The in-game page exposes percentage-based controls with explicit semantics:
 
-It runs the update from a temporary copy of itself, allowing `UPDATE_BRIDGE.exe` to update safely without a separate helper application. Diagnostic logs and other local files that are not part of the manifest are left untouched.
+- **Haptic output level**: a true global output multiplier. **100%** preserves the calibrated mix. This is also the truthful ceiling for the group because hard impacts can already reach full-scale PCM.
+- **Road surface master**: a true global surface multiplier. **100%** preserves the calibrated material mix.
+- **Advanced surfaces**: independent **Rolling power** and **Slip power** values for every detected material. Rolling defaults preserve the calibrated renderer. Slip defaults now show the measured incremental slip power versus the strongest calibrated suspension bump; the displayed default still maps to runtime gain 1.0, while higher values provide extra headroom.
+- **L2 start/end resistance**: two independent endpoints for the normal brake-trigger resistance; the hardware interpolates between them.
+- **R2 start/end resistance**: two independent endpoints for the normal throttle-trigger resistance. Equal values give a constant trigger; different values create an increasing or decreasing resistance curve.
+- **Bumps / impacts**: remains at **100%** by default because the strongest calibrated suspension/collision events can already reach the final PCM ceiling; weaker events still scale dynamically with physical severity.
+- **L2 brake resistance** and **L2 ABS kick**: percentage controls converted to normalized trigger forces before gameplay processing.
+- **R2 base resistance**: normal constant accelerator resistance only.
+- **R2 jolt strength**: TCS/rev-limiter vibration peak only. The calibrated strong-TCS peak is **25%**; 100% requests the maximum trigger-vibration amplitude. The dynamic-effects switch also disables wheelspin/shift/airborne unload cues.
+- **LED lighting**: the calibrated lightbar brightness is **86%**; 100% uses the remaining RGB output headroom.
 
-> The Bridge must be closed while updating. BeamNG.drive can stay open.
+Settings are stored by BeamNG.drive in the user settings folder and survive normal mod updates. The Bridge console settings menu is diagnostic-only and is not started during normal use.
 
-> Maintainers: every stable GitHub Release intended for the updater must include an asset named exactly `Enhanced_PS5_DualSense_Haptics_Bridge.zip`.
+The Bridge uses one transport-neutral trigger model. BeamNG authors semantic effects (`resistance`, `vibration` or `fine`) with normalized `0.0..1.0` values. Trigger force is then represented internally by one common **0..48 force lattice**, matching the highest-resolution Fine Feedback force mode used by the project. There is no active `0..255` trigger-force scale. Fine Feedback writes the 0..48 force directly; Official Feedback/Vibration are reduced to their eight physical strength levels only while the final HID report is packed. Genuine non-force byte fields such as Fine Feedback position, frequency and RGB remain byte-sized where the DualSense protocol requires them.
+
+The calibrated L2 progression, strong ABS rhythm, weak fine-feedback cues and R2 dynamic behavior keep the same intended output levels; only the internal representation and protocol boundaries are simplified. Haptic grip output remains a floating-point/PCM audio path and is never forced through the trigger-force lattice.
+
+
+## Bridge compatibility and updater
+
+The BeamNG mod announces its mod version and wire-protocol generation over the existing localhost telemetry. This check is entirely local and does **not** contact GitHub. Bridge V1.3 accepts protocol generations 40 and 41.
+
+For the V1.0/V1.2 -> V1.1/V1.3 rollout, compatibility is intentionally two-way during the transition: Bridge V1.3 continues to run the old Mod V1.0 protocol-40 packets, while Mod V1.1 additionally publishes a marked protocol-40 mirror so an installed Bridge V1.2 keeps working until the user runs its updater. Bridge V1.3 ignores that marked mirror and consumes only the canonical protocol-41 packet, preventing duplicated bumps, triggers or haptics. New V1.1 settings that exist only in the protocol-41 settings payload take full effect after Bridge V1.3 is installed; the legacy lane exists to keep the controller functional during the migration window.
+
+If the mod uses an unsupported protocol, the Bridge explains the mismatch and asks whether to install a compatible Bridge. GitHub is contacted only after the user explicitly answers **Yes**. `UPDATE_BRIDGE.exe` then reads `BRIDGE_COMPATIBILITY.json` from a published stable GitHub Release, selects the newest published stable Bridge that supports the detected protocol, verifies the downloaded package with `SHA256SUMS.txt`, installs it transactionally and restarts the Bridge. If no compatible release is available yet or GitHub cannot be reached, nothing is installed and the updater asks the user to try again later.
+
+`UPDATE_BRIDGE.exe` can still be launched manually at any time. Manual launch itself is the explicit request to check GitHub. The updater installs only official `Enhanced_PS5_DualSense_Haptics_Bridge.zip` release assets and never installs executable files from the development branch.
+
+Protocol numbers are compatibility generations, not public release numbers. They only increase for breaking Mod/Bridge wire changes (`41 -> 42 -> 43...`) and an older number is never reused. A Bridge release may support several generations at once.
+
+> The Bridge must be closed while files are replaced. Compatibility mode handles that handoff automatically; BeamNG.drive can stay open.
+
+> Maintainers: push the complete repository to `main` first so legacy V1.1 users can migrate, then publish the stable GitHub Release with two assets named exactly `Enhanced_PS5_DualSense_Haptics_Bridge.zip` and `BRIDGE_COMPATIBILITY.json`. `SHA256SUMS.txt` is inside the official ZIP.
 
 
 ## Troubleshooting
@@ -52,7 +80,7 @@ It runs the update from a temporary copy of itself, allowing `UPDATE_BRIDGE.exe`
 **Mod installed but no feedback?** Make sure the mod is enabled in BeamNG's Mod Manager, then reload the current vehicle with CTRL+R. If it still does not initialize, restart BeamNG.drive.
 - Do not run DSX, DS4Windows or another application that controls DualSense haptics or LEDs at the same time.
 - If the DualSense does not work correctly in BeamNG, disable Steam Input for BeamNG.drive in Steam > Properties > Controller.
-- Microsoft GameInput 3.0 or newer is installed. GameInput can be easily installed or updated from an administrator terminal using the command: winget install Microsoft.GameInput
+- Make sure Microsoft GameInput 3.0 or newer is installed. GameInput can be installed or updated from an administrator terminal with: `winget install Microsoft.GameInput`
 - Updating the DualSense firmware through PlayStation Accessories is recommended.
 
 
@@ -64,16 +92,15 @@ The Bridge includes additional troubleshooting and testing tools under:
 
 Available tools include:
 
-- Hardware detection
-- Audio-output detection
+- Installation/package verification
+- Combined USB/Bluetooth hardware and audio detection
 - USB stereo testing
 - Bluetooth stereo testing
-- Bluetooth bump-carrier testing
 - USB diagnostic logging
 - Bluetooth diagnostic logging
 - Bridge log collection
 
-These tools are mainly intended for troubleshooting and bug reports.
+These tools are mainly intended for troubleshooting and bug reports. Normal Bridge launches keep live telemetry/status logging disabled to avoid unnecessary console I/O; the diagnostic log launchers enable it explicitly.
 
 
 ## How it works
@@ -152,7 +179,7 @@ L2 provides dynamic brake feedback including:
 - Normal braking resistance
 - ABS pulse feedback
 - Locked-wheel behavior
-- Airborn mode
+- Airborne mode
 
 
 ### R2 — Throttle
@@ -163,7 +190,7 @@ R2 provides dynamic throttle feedback including:
 - Wheelspin feedback
 - TCS feedback
 - Gear-shift feedback
-- Airborn mode
+- Airborne mode
 
 
 ## Dynamic lighting
@@ -188,10 +215,16 @@ This program will not transfer any information to other networked systems unless
 
 BeamNG.drive vehicle telemetry is received and processed locally to generate controller feedback. No gameplay telemetry or personal user data is sent to the developer or to analytics services.
 
-Network access to GitHub occurs only for actions explicitly requested by the user, such as checking for or downloading updates.
+Network access to GitHub occurs only for actions explicitly requested by the user, such as manually running the updater or accepting the compatibility-update prompt. The local Mod/Bridge protocol check itself performs no network request.
 
 ## License
 
 MIT.
 
 See `LICENSE` and `THIRD_PARTY_NOTICES.md`.
+
+
+## Recent additions
+
+- BeamNG can now send persistent in-game user settings to the Bridge.
+- Added support for advanced per-surface haptic strength overrides from the BeamNG settings menu.

@@ -5,8 +5,7 @@ import "math"
 // Common Feel is generated once at 48 kHz for every transport.
 // USB is the canonical reference and receives that stream directly, without
 // transport filtering. Bluetooth derives its 3 kHz payload from the same source
-// through an anti-alias low-pass and 16:1 decimation. This keeps the validated
-// USB feel byte-stable while making Bluetooth a deterministic adapter of it.
+// through an anti-alias low-pass and 16:1 decimation.
 const (
 	commonFeelLowPassHz = 1000.0
 	bluetoothDecimation = canonicalHapticSampleRate / bluetoothHapticSampleRate
@@ -73,13 +72,15 @@ type transportPCMBlock struct {
 	Bluetooth3k []int8
 }
 
-// canonicalPCMStream is the sole PCM transport boundary. USB is intentionally
-// not filtered here: it is the validated 48 kHz reference. Bluetooth alone is
-// band-limited before decimation. Transport gains are global calibration only;
-// no material or gameplay effect receives a transport-specific correction.
+// canonicalPCMStream is the sole PCM transport boundary. Runtime adapters call
+// only the conversion they actually need: USB never executes the Bluetooth
+// low-pass/decimator and Bluetooth never builds a redundant USB copy.
+// Scratch buffers are owned by the adapter and reused on every block.
 type canonicalPCMStream struct {
-	lowPass        stereoLowPass
-	bluetoothPhase int
+	lowPass          stereoLowPass
+	bluetoothPhase   int
+	usbScratch       []int8
+	bluetoothScratch []int8
 }
 
 func newCanonicalPCMStream() *canonicalPCMStream {
@@ -97,40 +98,73 @@ func quantizeHaptic(v float64) int8 {
 	return int8(math.Round(clamp(v, -0.99, 0.99) * 127))
 }
 
-func (s *canonicalPCMStream) process(samples []int8) transportPCMBlock {
+func transportGain(value float64) float64 {
+	if value <= 0 {
+		return 1.0
+	}
+	return value
+}
+
+// processUSB keeps the validated canonical 48-kHz stream byte-identical at the
+// normal gain of 1.0. It returns the source slice directly in that case. If a
+// transport calibration gain is configured, a reusable scratch slice is used.
+func (s *canonicalPCMStream) processUSB(samples []int8) []int8 {
 	if s == nil || len(samples) < 2 {
-		return transportPCMBlock{}
+		return nil
 	}
+	samples = samples[:len(samples)-len(samples)%2]
+	gain := transportGain(feelProfile().Transport.USBOutputGain)
+	if math.Abs(gain-1.0) <= 1e-12 {
+		return samples
+	}
+	if cap(s.usbScratch) < len(samples) {
+		s.usbScratch = make([]int8, len(samples))
+	} else {
+		s.usbScratch = s.usbScratch[:len(samples)]
+	}
+	for i, sample := range samples {
+		s.usbScratch[i] = quantizeHaptic(float64(sample) / 127.0 * gain)
+	}
+	return s.usbScratch
+}
+
+// processBluetooth converts the canonical 48-kHz mix to Bluetooth's 3-kHz
+// transport. USB is the physical amplitude reference and Bluetooth uses the
+// same nominal output gain of 1.00. The low-pass/decimator is transport-only;
+// gameplay balance, stereo pan and effect strengths remain shared.
+func (s *canonicalPCMStream) processBluetooth(samples []int8) []int8 {
+	if s == nil || len(samples) < 2 {
+		return nil
+	}
+	samples = samples[:len(samples)-len(samples)%2]
 	frames := len(samples) / 2
-	usb := make([]int8, frames*2)
-	bt := make([]int8, 0, (frames/bluetoothDecimation+1)*2)
-
-	profile := feelProfile()
-	usbGain := profile.Transport.USBOutputGain
-	btGain := profile.Transport.BluetoothOutputGain
-	if usbGain <= 0 {
-		usbGain = 1.0
+	maxOutputSamples := (frames/bluetoothDecimation + 1) * 2
+	if cap(s.bluetoothScratch) < maxOutputSamples {
+		s.bluetoothScratch = make([]int8, 0, maxOutputSamples)
+	} else {
+		s.bluetoothScratch = s.bluetoothScratch[:0]
 	}
-	if btGain <= 0 {
-		btGain = 1.0
-	}
-
+	gain := transportGain(feelProfile().Transport.BluetoothOutputGain)
 	for i := 0; i < frames; i++ {
 		rawLeft := float64(samples[i*2]) / 127.0
 		rawRight := float64(samples[i*2+1]) / 127.0
-
-		// USB stays byte-equivalent to the validated canonical renderer when
-		// usb_output_gain is 1.0. Do not place Bluetooth transport filtering here.
-		usb[i*2] = quantizeHaptic(rawLeft * usbGain)
-		usb[i*2+1] = quantizeHaptic(rawRight * usbGain)
-
-		// Bluetooth requires band-limiting before the 48 kHz -> 3 kHz reduction.
 		filteredLeft, filteredRight := s.lowPass.process(rawLeft, rawRight)
+
 		s.bluetoothPhase++
 		if s.bluetoothPhase == bluetoothDecimation {
-			bt = append(bt, quantizeHaptic(filteredLeft*btGain), quantizeHaptic(filteredRight*btGain))
+			s.bluetoothScratch = append(s.bluetoothScratch,
+				quantizeHaptic(filteredLeft*gain),
+				quantizeHaptic(filteredRight*gain))
 			s.bluetoothPhase = 0
 		}
 	}
+	return s.bluetoothScratch
+}
+
+// process is retained as a test/diagnostic compatibility helper. Production
+// code must use processUSB or processBluetooth so only one transport is built.
+func (s *canonicalPCMStream) process(samples []int8) transportPCMBlock {
+	usb := append([]int8(nil), s.processUSB(samples)...)
+	bt := append([]int8(nil), s.processBluetooth(samples)...)
 	return transportPCMBlock{USB48k: usb, Bluetooth3k: bt}
 }

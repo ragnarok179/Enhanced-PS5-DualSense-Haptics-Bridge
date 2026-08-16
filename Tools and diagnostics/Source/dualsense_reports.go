@@ -3,18 +3,24 @@ package main
 import (
 	"encoding/binary"
 	"math"
-	"time"
 )
 
 type triggerSignature struct {
-	L2Mode, L2Zone, L2Start, L2End, L2Amp, L2Hz int
-	R2Mode, R2Zone, R2Start, R2End, R2Amp, R2Hz int
+	L2Kind, R2Kind                                triggerEffectKind
+	L2Position, L2Start, L2End, L2Amplitude, L2Hz int
+	R2Position, R2Start, R2End, R2Amplitude, R2Hz int
 }
 
 func signatureForTriggers(t telemetry) triggerSignature {
+	pair := triggerPairFromTelemetry(t)
+	qPos := func(v unitValue) int { return int(math.Round(v.Float64() * 1_000_000)) }
+	qForce := func(v triggerForce) int { return v.Level() }
 	return triggerSignature{
-		t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz,
-		t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz,
+		L2Kind: pair.L2.Kind, R2Kind: pair.R2.Kind,
+		L2Position: qPos(pair.L2.StartPosition), L2Start: qForce(pair.L2.StartForce), L2End: qForce(pair.L2.EndForce),
+		L2Amplitude: qForce(pair.L2.Amplitude), L2Hz: int(math.Round(pair.L2.FrequencyHz * 1000)),
+		R2Position: qPos(pair.R2.StartPosition), R2Start: qForce(pair.R2.StartForce), R2End: qForce(pair.R2.EndForce),
+		R2Amplitude: qForce(pair.R2.Amplitude), R2Hz: int(math.Round(pair.R2.FrequencyHz * 1000)),
 	}
 }
 
@@ -28,55 +34,68 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
-func fillOfficialFeedback(dst []byte, startZone, startStrength, endStrength int) {
+// DualSense trigger encoding lives exclusively in this hardware adapter. The
+// rest of the Bridge works with normalized triggerEffect values.
+func clearTrigger(dst []byte) {
 	for i := range dst {
 		dst[i] = 0
 	}
-	if len(dst) < 11 {
-		return
-	}
-	startZone = clampInt(startZone, 0, 9)
-	startStrength = clampInt(startStrength, 0, 8)
-	endStrength = clampInt(endStrength, 0, 8)
-	if startStrength == 0 || endStrength == 0 {
+	if len(dst) > 0 {
 		dst[0] = 0x05
+	}
+}
+
+func fillOfficialResistance(dst []byte, effect triggerEffect) {
+	for i := range dst {
+		dst[i] = 0
+	}
+	if len(dst) < 11 || effect.StartForce <= 0 || effect.EndForce <= 0 {
+		clearTrigger(dst)
 		return
 	}
+	startZone := clampInt(int(math.Round(effect.StartPosition.Float64()*9.0)), 0, 9)
 	var active uint16
 	var packed uint32
 	span := 9 - startZone
 	for zone := startZone; zone < 10; zone++ {
-		strength := endStrength
+		force := effect.EndForce
 		if span > 0 {
 			x := float64(zone-startZone) / float64(span)
-			strength = int(math.Round(float64(startStrength) + float64(endStrength-startStrength)*x))
+			force = force48(effect.StartForce.Float64() + (effect.EndForce.Float64()-effect.StartForce.Float64())*x)
 		}
-		strength = clampInt(strength, 1, 8)
+		strength := force.officialStep()
+		if strength <= 0 {
+			continue
+		}
 		active |= uint16(1 << zone)
 		packed |= uint32((strength-1)&7) << (3 * zone)
+	}
+	if active == 0 {
+		clearTrigger(dst)
+		return
 	}
 	dst[0] = 0x21
 	dst[1], dst[2] = byte(active), byte(active>>8)
 	dst[3], dst[4], dst[5], dst[6] = byte(packed), byte(packed>>8), byte(packed>>16), byte(packed>>24)
 }
 
-func fillOfficialVibration(dst []byte, startZone, amplitude, hz int) {
+func fillOfficialVibrationEffect(dst []byte, effect triggerEffect) {
 	for i := range dst {
 		dst[i] = 0
 	}
-	if len(dst) < 11 {
+	if len(dst) < 11 || effect.Amplitude <= 0 || effect.FrequencyHz <= 0 {
+		clearTrigger(dst)
 		return
 	}
-	startZone = clampInt(startZone, 0, 9)
-	amplitude = clampInt(amplitude, 0, 8)
-	hz = clampInt(hz, 0, 255)
-	if amplitude == 0 || hz == 0 {
-		dst[0] = 0x05
+	startZone := clampInt(int(math.Round(effect.StartPosition.Float64()*9.0)), 0, 9)
+	strength := effect.Amplitude.officialStep()
+	if strength <= 0 {
+		clearTrigger(dst)
 		return
 	}
 	var active uint16
 	var packed uint32
-	value := uint32((amplitude - 1) & 7)
+	value := uint32((strength - 1) & 7)
 	for zone := startZone; zone < 10; zone++ {
 		active |= uint16(1 << zone)
 		packed |= value << (3 * zone)
@@ -84,251 +103,73 @@ func fillOfficialVibration(dst []byte, startZone, amplitude, hz int) {
 	dst[0] = 0x26
 	dst[1], dst[2] = byte(active), byte(active>>8)
 	dst[3], dst[4], dst[5], dst[6] = byte(packed), byte(packed>>8), byte(packed>>16), byte(packed>>24)
-	dst[9] = byte(hz)
+	dst[9] = byte(clampInt(int(math.Round(effect.FrequencyHz)), 0, 255))
 }
 
-func fillFineFeedback(dst []byte, position, strength int) {
+func fillFineFeedbackEffect(dst []byte, effect triggerEffect) {
 	for i := range dst {
 		dst[i] = 0
 	}
-	if len(dst) < 11 {
+	if len(dst) < 11 || effect.StartForce <= 0 {
+		clearTrigger(dst)
 		return
 	}
-	position = clampInt(position, 0, 255)
-	strength = clampInt(strength, 0, 48)
-	if strength == 0 {
-		dst[0] = 0x05
-		return
-	}
-	dst[0], dst[1], dst[2] = 0x01, byte(position), byte(strength)
+	dst[0] = 0x01
+	dst[1] = byte(effect.StartPosition.positionByte())
+	dst[2] = byte(effect.StartForce.Level())
 }
 
-func fillTrigger(dst []byte, mode, startZone, startStrength, endStrength, amplitude, hz int) {
-	switch mode {
-	case 1:
-		fillOfficialFeedback(dst, startZone, startStrength, endStrength)
-	case 2:
-		fillOfficialVibration(dst, startZone, amplitude, hz)
-	case 3:
-		fillFineFeedback(dst, startZone, startStrength)
+func fillTriggerEffect(dst []byte, effect triggerEffect) {
+	switch effect.Kind {
+	case triggerResistance:
+		fillOfficialResistance(dst, effect)
+	case triggerVibration:
+		fillOfficialVibrationEffect(dst, effect)
+	case triggerFine:
+		fillFineFeedbackEffect(dst, effect)
 	default:
-		for i := range dst {
-			dst[i] = 0
-		}
-		if len(dst) > 0 {
-			dst[0] = 0x05
-		}
+		clearTrigger(dst)
 	}
 }
 
-func rgbDistance(a, b [3]byte) int {
-	distance := 0
-	for i := 0; i < 3; i++ {
-		delta := int(a[i]) - int(b[i])
-		if delta < 0 {
-			delta = -delta
-		}
-		distance += delta
+// fillUSBTriggerStateCommon builds the 47-byte DualSense SetStateData body
+// used by USB. The Bridge owns adaptive triggers only; BeamNG Device.setRGB()
+// is the sole lightbar writer, so valid_flag1 and RGB bytes stay clear.
+func fillUSBTriggerStateCommon(common []byte, t telemetry) {
+	if len(common) < 47 {
+		return
 	}
-	return distance
+	clear(common[:47])
+	common[0] = 0x0C // R2 + L2 trigger enables
+	pair := triggerPairFromTelemetry(t)
+	fillTriggerEffect(common[10:21], pair.R2)
+	fillTriggerEffect(common[21:32], pair.L2)
 }
 
-type lightbarController struct {
-	stage         int // 0=off, 1=progressive, 2=solid red
-	lastColor     [3]byte
-	enabled       bool
-	rpmActive     bool
-	belowOffSince time.Time
-	limiterUntil  time.Time
-	blinkActive   bool
-}
-
-func quantizeLED(v float64) byte {
-	v = clamp(v, 0, 255)
-	q := int(math.Round(v/8.0)) * 8
-	if q > 255 {
-		q = 255
+// fillBluetoothSetStateData63 builds the SetStateData block embedded in the
+// validated Bluetooth 0x36 all-in-one transport. The block remains present for
+// audio/trigger state, but every secondary LED-valid field stays clear so
+// BeamNG Device.setRGB() remains the only lightbar writer.
+func fillBluetoothSetStateData63(state []byte, t telemetry) {
+	if len(state) < 63 {
+		return
 	}
-	return byte(q)
-}
-
-func steadyRPMRGB(ratio float64) [3]byte {
-	cfg := feelProfile().LED
-	if ratio >= cfg.RedRatio {
-		return [3]byte{byte(clampInt(cfg.MaxBrightness, 0, 255)), 0, 0}
-	}
-	x := clamp01((ratio - cfg.FirstRatio) / math.Max(0.001, cfg.RedRatio-cfg.FirstRatio))
-	hue := 120 * (1 - x)
-	brightness := float64(cfg.MinBrightness) + float64(cfg.MaxBrightness-cfg.MinBrightness)*clamp01(x*1.8)
-	r, g, b := hsvToRGB(hue, 1.0, brightness/255.0)
-	return [3]byte{quantizeLED(float64(r)), quantizeLED(float64(g)), quantizeLED(float64(b))}
-}
-
-func (c *lightbarController) update(t telemetry, now time.Time) [3]byte {
-	var black [3]byte
-	engineActive := t.Active && t.Raw != nil && t.Raw.EngineRunning && t.Raw.MaxRPM > 1
-	if !engineActive {
-		c.stage = 0
-		c.rpmActive = false
-		c.belowOffSince = time.Time{}
-		c.enabled = false
-		c.limiterUntil = time.Time{}
-		c.blinkActive = false
-		c.lastColor = black
-		return black
-	}
-
-	if t.ShiftLEDsInUse && !c.enabled {
-		c.enabled = true
-	}
-	if !c.enabled {
-		c.blinkActive = false
-		c.lastColor = black
-		return black
-	}
-
-	cfg := feelProfile().LED
-	ratio := clamp01(t.Raw.RPM / math.Max(t.Raw.MaxRPM, 1))
-	if !c.rpmActive {
-		if ratio >= cfg.FirstRatio {
-			c.rpmActive = true
-			c.stage = 1
-			c.belowOffSince = time.Time{}
-		} else {
-			c.blinkActive = false
-			c.lastColor = black
-			return black
-		}
-	} else if ratio < cfg.OffRatio {
-		if c.belowOffSince.IsZero() {
-			c.belowOffSince = now
-		}
-		if now.Sub(c.belowOffSince) >= time.Duration(cfg.OffHoldMS)*time.Millisecond {
-			c.rpmActive = false
-			c.stage = 0
-			c.blinkActive = false
-			c.lastColor = black
-			return black
-		}
-	} else {
-		c.belowOffSince = time.Time{}
-	}
-
-	if c.stage == 2 {
-		if ratio < cfg.RedExitRatio {
-			c.stage = 1
-		}
-	} else if ratio >= cfg.RedRatio {
-		c.stage = 2
-	}
-
-	if t.Raw.RevLimiter && ratio >= cfg.BlinkMinRatio {
-		c.limiterUntil = now.Add(time.Duration(cfg.BlinkHoldMS) * time.Millisecond)
-	}
-	blink := !c.limiterUntil.IsZero() && now.Before(c.limiterUntil) && ratio >= cfg.RedExitRatio
-	if !cfg.BlinkOnlyOnRevLimiter && ratio >= 0.985 {
-		blink = true
-	}
-	if blink {
-		c.blinkActive = true
-		hz := math.Max(1, cfg.BlinkHz)
-		on := (int(math.Floor(float64(now.UnixNano())/1e9*hz*2.0)) % 2) == 0
-		if !on {
-			c.lastColor = black
-			return black
-		}
-		red := [3]byte{byte(clampInt(cfg.MaxBrightness, 0, 255)), 0, 0}
-		c.lastColor = red
-		return red
-	}
-	c.blinkActive = false
-
-	if ratio < cfg.FirstRatio && c.lastColor != black {
-		return c.lastColor
-	}
-	rgb := steadyRPMRGB(math.Max(ratio, cfg.FirstRatio))
-	c.lastColor = rgb
-	return rgb
-}
-
-func (c *lightbarController) isBlinking() bool {
-	return c.blinkActive
-}
-
-func (c *lightbarController) status() string {
-	if c.blinkActive {
-		return "blink"
-	}
-	if !c.rpmActive {
-		return "off"
-	}
-	if c.stage >= 2 {
-		return "red"
-	}
-	return "progress"
-}
-
-func bluetoothLightbarUpdateDue(ledSynced bool, lastRGB, rgb [3]byte, lastWrite, now time.Time, blinking bool) bool {
-	if ledSynced && rgbDistance(rgb, lastRGB) < 8 {
-		return false
-	}
-	interval := 120 * time.Millisecond
-	if blinking {
-		interval = 50 * time.Millisecond
-	}
-	return lastWrite.IsZero() || now.Sub(lastWrite) >= interval
-}
-
-// buildBluetoothSetStateData63 returns the payload used by DS5Dongle's
-// SetStateData sized packet. It is 63 bytes long, but only bytes 0..46 are the
-// documented SetStateData structure; bytes 47..62 are zero padding. Do NOT put
-// USB report ID 0x02 at byte 0 here: Bluetooth SetStateData begins at offset 0.
-func buildBluetoothSetStateData63WithFlags(t telemetry, rgb [3]byte, updateLightbar, releaseLEDs bool) []byte {
-	state := make([]byte, 63)
-	// DS5Dongle's 0x36 audio-haptic transport requires the SetStateData block
-	// to remain present, so keep the validated audio/trigger state in every
-	// frame. valid_flag1, however, must remain transactional; an older implementation used 0xF3,
-	// which revalidated microphone LED, power-save, player indicators and
-	// audio-control2 roughly 94 times/s. SDL and hid-playstation only validate
-	// LED-related fields when those fields actually change.
+	clear(state[:63])
 	state[0] = 0xFD
-	state[1] = 0x80 // AUDIO_CONTROL2 only; no steady LED/player/power-save ownership
-	if updateLightbar {
-		state[1] |= 0x04 // LIGHTBAR_CONTROL_ENABLE, one frame only
-	}
-	if releaseLEDs {
-		state[1] |= 0x08 // RELEASE_LEDS, one frame only
-	}
-	state[2], state[3] = 0, 0
+	state[1] = 0x00 // no lightbar/player/power-save ownership
 	state[4], state[5], state[6] = 100, 100, 0x40
-	state[7], state[8], state[9] = 0x09, 0x00, 0x00
-	fillTrigger(state[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz)
-	fillTrigger(state[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz)
+	state[7] = 0x09
+	pair := triggerPairFromTelemetry(t)
+	fillTriggerEffect(state[10:21], pair.R2)
+	fillTriggerEffect(state[21:32], pair.L2)
 	state[36], state[37] = 0x00, 0x01
-	state[38], state[39], state[40] = 0, 0, 0
-	// Do not combine RELEASE_LEDS with LIGHTBAR_SETUP/LIGHT_OUT. SDL uses the
-	// release bit by itself after the Bluetooth connection animation; Linux's
-	// LIGHT_OUT setup is a separate initialization mechanism. Combining both
-	// can deliberately fade the bar while we are trying to hand it to RGB.
-	state[41] = 0x00
 	state[42], state[43] = 0x01, 0x00
-	state[44], state[45], state[46] = rgb[0], rgb[1], rgb[2]
-	return state
-}
-
-func buildBluetoothSetStateData63(t telemetry, rgb [3]byte) []byte {
-	return buildBluetoothSetStateData63WithFlags(t, rgb, true, false)
-}
-
-// When RGB is owned by BeamNG Device.setRGB(), the continuous 0x36 stream must
-// not validate any secondary-output group that could cause the controller to
-// re-apply a stale lightbar state. Keep the trigger/audio primary state, but
-// clear valid_flag1 and RGB bytes completely. This is intentionally stricter
-// than merely clearing LIGHTBAR_CONTROL_ENABLE.
-func buildBluetoothSetStateData63ExternalRGB(t telemetry) []byte {
-	state := buildBluetoothSetStateData63WithFlags(t, [3]byte{}, false, false)
-	state[1] = 0x00
 	state[44], state[45], state[46] = 0, 0, 0
+}
+
+func buildBluetoothSetStateData63(t telemetry) []byte {
+	state := make([]byte, 63)
+	fillBluetoothSetStateData63(state, t)
 	return state
 }
 
@@ -355,30 +196,13 @@ func buildBluetoothInitializationReport(enable1, enable2, _ byte) []byte {
 	return finalizeBluetoothControlReport(buildBluetoothControlBase(0, enable1, enable2))
 }
 
-func buildBluetoothControlReportMasked(sequence byte, t telemetry, rgb [3]byte, _ int, updateTriggers, updateLED bool) []byte {
-	// Only mark fields that this packet intentionally changes. Bits 0/1 remain
-	// clear so compatible rumble is never selected and the 0x32 audio-haptic
-	// stream stays active. 0x04/0x08 are the documented R2/L2 trigger enables;
-	// valid_flag1 bit 0x04 is the documented lightbar enable.
-	var enable1, enable2 byte
-	if updateTriggers {
-		enable1 = 0x0C
-	}
-	if updateLED {
-		enable2 = 0x04
-	}
-	report := buildBluetoothControlBase(sequence, enable1, enable2)
+func buildBluetoothTriggerControlReport(sequence byte, t telemetry, _ int) []byte {
+	// Diagnostic 0x31 path: update adaptive triggers only. Compatible rumble,
+	// audio routing and all LED-valid fields remain untouched.
+	report := buildBluetoothControlBase(sequence, 0x0C, 0x00)
 	common := report[3:50]
-	if updateTriggers {
-		fillTrigger(common[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz)
-		fillTrigger(common[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz)
-	}
-	if updateLED {
-		common[44], common[45], common[46] = rgb[0], rgb[1], rgb[2]
-	}
+	pair := triggerPairFromTelemetry(t)
+	fillTriggerEffect(common[10:21], pair.R2)
+	fillTriggerEffect(common[21:32], pair.L2)
 	return finalizeBluetoothControlReport(report)
-}
-
-func buildBluetoothControlReport(sequence byte, t telemetry, rgb [3]byte, outputLen int) []byte {
-	return buildBluetoothControlReportMasked(sequence, t, rgb, outputLen, true, true)
 }

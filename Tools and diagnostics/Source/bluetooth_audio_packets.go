@@ -5,6 +5,11 @@ import (
 	"hash/crc32"
 )
 
+var (
+	sonyBluetoothCRCTable = crc32.MakeTable(crc32.IEEE)
+	sonyBluetoothPrefix   = [1]byte{0xA2}
+)
+
 // Bluetooth audio-haptic packet builders live here so transport framing stays
 // separate from haptic synthesis and gameplay interpretation.
 
@@ -12,12 +17,9 @@ func sonyBluetoothCRC(report []byte, protocolLength int) uint32 {
 	if protocolLength < 4 || protocolLength > len(report) {
 		return 0
 	}
-	// Sony output CRC is the IEEE CRC32 of the HIDP output prefix 0xA2
-	// followed by the report up to, but excluding, its final CRC field.
-	input := make([]byte, 1+protocolLength-4)
-	input[0] = 0xA2
-	copy(input[1:], report[:protocolLength-4])
-	return crc32.ChecksumIEEE(input)
+	// Incremental CRC avoids allocating a temporary prefix+report buffer.
+	crc := crc32.Update(0, sonyBluetoothCRCTable, sonyBluetoothPrefix[:])
+	return crc32.Update(crc, sonyBluetoothCRCTable, report[:protocolLength-4])
 }
 
 // buildBluetoothHapticReport32 follows SAxense's direct HID haptics-only
@@ -83,6 +85,34 @@ func buildBluetoothAllInOneReport36(sequence, audioCounter byte, samples []int8,
 		report[78+i] = byte(samples[i])
 	}
 
+	binary.LittleEndian.PutUint32(report[394:398], sonyBluetoothCRC(report, bluetoothHaptic36ProtoSize))
+	return report
+}
+
+// bluetoothReport36Builder owns the hot-path wireless buffers. One instance is
+// reused for the lifetime of the Bluetooth loop, eliminating the 398-byte report
+// and 63-byte state allocations that previously happened at ~94 Hz.
+type bluetoothReport36Builder struct {
+	report [bluetoothHaptic36ProtoSize]byte
+	state  [63]byte
+}
+
+func (b *bluetoothReport36Builder) build(sequence, audioCounter byte, samples []int8, t telemetry) []byte {
+	fillBluetoothSetStateData63(b.state[:], t)
+	report := b.report[:]
+	clear(report)
+	report[0] = 0x36
+	report[1] = (sequence & 0x0F) << 4
+	report[2], report[3], report[4] = 0x91, 7, 0xFE
+	report[5], report[6], report[7], report[8], report[9] = 64, 64, 64, 64, 64
+	report[10] = audioCounter
+	report[11], report[12] = 0x90, 63
+	copy(report[13:76], b.state[:])
+	report[76], report[77] = 0x92, 64
+	limit := minInt(len(samples), 64)
+	for i := 0; i < limit; i++ {
+		report[78+i] = byte(samples[i])
+	}
 	binary.LittleEndian.PutUint32(report[394:398], sonyBluetoothCRC(report, bluetoothHaptic36ProtoSize))
 	return report
 }

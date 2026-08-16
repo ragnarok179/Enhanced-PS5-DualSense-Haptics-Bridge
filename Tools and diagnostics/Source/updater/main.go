@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -15,26 +16,39 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Ragnarok179/enhanced-ps5-dualsense-haptics-bridge/internal/compatibility"
 )
 
 const (
 	repoOwner        = "ragnarok179"
 	repoName         = "Enhanced-PS5-DualSense-Haptics-Bridge"
 	manifestName     = "SHA256SUMS.txt"
-	releaseAssetName = "Enhanced_PS5_DualSense_Haptics_Bridge.zip"
+	releaseAssetName = compatibility.DefaultReleaseAsset
 )
 
 type githubRelease struct {
-	TagName string        `json:"tag_name"`
-	Name    string        `json:"name"`
-	Assets  []githubAsset `json:"assets"`
+	TagName    string        `json:"tag_name"`
+	Name       string        `json:"name"`
+	Draft      bool          `json:"draft"`
+	Prerelease bool          `json:"prerelease"`
+	Assets     []githubAsset `json:"assets"`
 }
 
 type githubAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
+type updaterOptions struct {
+	CompatibilityUpdate bool
+	ModVersion          string
+	Protocol            int
+	WaitPID             int
+	Relaunch            bool
 }
 
 var manifestLine = regexp.MustCompile(`^([0-9a-fA-F]{64})\s+\./(.+)$`)
@@ -51,15 +65,30 @@ var compatibilityOnlyFiles = map[string]struct{}{
 func main() {
 	if len(os.Args) >= 3 && os.Args[1] == "--worker" {
 		installRoot := os.Args[2]
-		code := runWorker(installRoot)
-		fmt.Println()
-		fmt.Print("Press Enter to close...")
-		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		options, err := parseUpdaterOptions(os.Args[3:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
+			os.Exit(2)
+		}
+		code := runWorker(installRoot, options)
+		if !options.CompatibilityUpdate {
+			fmt.Println()
+			fmt.Print("Press Enter to close...")
+			_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		}
 		cleanupWorkerLater()
 		os.Exit(code)
 	}
 
-	code := launchWorker()
+	options, err := parseUpdaterOptions(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
+		fmt.Println()
+		fmt.Print("Press Enter to close...")
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		os.Exit(2)
+	}
+	code := launchWorker(options)
 	if code != 0 {
 		fmt.Println()
 		fmt.Print("Press Enter to close...")
@@ -68,7 +97,51 @@ func main() {
 	os.Exit(code)
 }
 
-func launchWorker() int {
+func parseUpdaterOptions(args []string) (updaterOptions, error) {
+	var options updaterOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--compatibility-update":
+			options.CompatibilityUpdate = true
+		case "--mod-version":
+			if i+1 >= len(args) {
+				return updaterOptions{}, errors.New("--mod-version requires a value")
+			}
+			i++
+			options.ModVersion = strings.TrimSpace(args[i])
+		case "--protocol":
+			if i+1 >= len(args) {
+				return updaterOptions{}, errors.New("--protocol requires a value")
+			}
+			i++
+			protocol, err := strconv.Atoi(args[i])
+			if err != nil || protocol <= 0 {
+				return updaterOptions{}, fmt.Errorf("invalid protocol %q", args[i])
+			}
+			options.Protocol = protocol
+		case "--wait-pid":
+			if i+1 >= len(args) {
+				return updaterOptions{}, errors.New("--wait-pid requires a value")
+			}
+			i++
+			pid, err := strconv.Atoi(args[i])
+			if err != nil || pid <= 0 {
+				return updaterOptions{}, fmt.Errorf("invalid PID %q", args[i])
+			}
+			options.WaitPID = pid
+		case "--relaunch":
+			options.Relaunch = true
+		default:
+			return updaterOptions{}, fmt.Errorf("unknown updater option %q", args[i])
+		}
+	}
+	if options.CompatibilityUpdate && options.Protocol <= 0 {
+		return updaterOptions{}, errors.New("compatibility update requires --protocol")
+	}
+	return options, nil
+}
+
+func launchWorker(options updaterOptions) int {
 	executable, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[ERROR] Unable to locate UPDATE_BRIDGE.exe: %v\n", err)
@@ -89,7 +162,9 @@ func launchWorker() int {
 		return 2
 	}
 
-	cmd := exec.Command(workerPath, "--worker", installRoot)
+	workerArgs := []string{"--worker", installRoot}
+	workerArgs = append(workerArgs, serializeUpdaterOptions(options)...)
+	cmd := exec.Command(workerPath, workerArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -102,10 +177,27 @@ func launchWorker() int {
 	return 0
 }
 
-func runWorker(installRoot string) int {
-	fmt.Println("Enhanced PS5 DualSense Haptics - Manual Updater")
-	fmt.Println()
+func serializeUpdaterOptions(options updaterOptions) []string {
+	args := make([]string, 0, 9)
+	if options.CompatibilityUpdate {
+		args = append(args, "--compatibility-update")
+	}
+	if options.ModVersion != "" {
+		args = append(args, "--mod-version", options.ModVersion)
+	}
+	if options.Protocol > 0 {
+		args = append(args, "--protocol", strconv.Itoa(options.Protocol))
+	}
+	if options.WaitPID > 0 {
+		args = append(args, "--wait-pid", strconv.Itoa(options.WaitPID))
+	}
+	if options.Relaunch {
+		args = append(args, "--relaunch")
+	}
+	return args
+}
 
+func runWorker(installRoot string, options updaterOptions) int {
 	absoluteRoot, err := filepath.Abs(strings.TrimSpace(strings.Trim(installRoot, `"`)))
 	if err != nil || absoluteRoot == "" {
 		fmt.Fprintln(os.Stderr, "[ERROR] The installation folder path is invalid.")
@@ -113,22 +205,34 @@ func runWorker(installRoot string) int {
 	}
 	installRoot = filepath.Clean(absoluteRoot)
 
+	if !options.CompatibilityUpdate {
+		if pending, ok := readPendingCompatibilityRequest(installRoot); ok {
+			options.CompatibilityUpdate = true
+			options.ModVersion = pending.ModVersion
+			options.Protocol = pending.Protocol
+			options.Relaunch = true
+		}
+	}
+
+	if options.CompatibilityUpdate {
+		fmt.Println("Enhanced PS5 DualSense Haptics - Compatibility Updater")
+	} else {
+		fmt.Println("Enhanced PS5 DualSense Haptics - Manual Updater")
+	}
+	fmt.Println()
+
 	if directoryExists(filepath.Join(installRoot, ".git")) {
 		fmt.Println("[ERROR] This folder is a Git working copy. Use GitHub Desktop or git pull instead of the public updater.")
 		return 4
 	}
 
-	for _, process := range []string{
-		"EnhancedPS5DualSenseHapticsUSB.exe",
-		"EnhancedPS5DualSenseHapticsBluetooth.exe",
-		"START_BRIDGE.exe",
-		"START_BRIDGE_AND_BEAMNG.exe",
-	} {
-		running, checkErr := processRunning(process)
-		if checkErr == nil && running {
-			fmt.Println("[ERROR] The Bridge is currently running. Close it before updating.")
-			return 3
-		}
+	if options.WaitPID > 0 {
+		fmt.Println("[UPDATE] Waiting for the incompatible Bridge process to close...")
+		waitForPID(options.WaitPID, 12*time.Second)
+	}
+	if !waitForBridgeProcesses(installRoot, 12*time.Second) {
+		fmt.Println("[ERROR] The Bridge is still running. Close it and try again.")
+		return 3
 	}
 
 	tempRoot, err := os.MkdirTemp("", "EnhancedDualSenseUpdate_")
@@ -150,32 +254,57 @@ func runWorker(installRoot string) int {
 		return 1
 	}
 
-	fmt.Println("[UPDATE] Checking the latest stable GitHub Release...")
-	release, err := fetchLatestRelease()
+	if options.CompatibilityUpdate {
+		modLabel := options.ModVersion
+		if modLabel == "" {
+			modLabel = "unknown"
+		}
+		fmt.Printf("[UPDATE] Looking for the newest stable Bridge compatible with BeamNG mod %s / protocol %d...\n", modLabel, options.Protocol)
+	} else {
+		fmt.Println("[UPDATE] Checking stable Bridge releases...")
+	}
+
+	releases, err := fetchPublishedReleases()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[ERROR] Unable to check GitHub Releases: %v\n", err)
+		fmt.Println("Please try again later.")
 		return 1
+	}
+	index, err := fetchCompatibilityIndex(releases)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ERROR] Unable to read the released compatibility index: %v\n", err)
+		fmt.Println("Please try again later.")
+		return 1
+	}
+
+	var candidates []compatibility.Release
+	target := compatibility.Target{ModVersion: options.ModVersion, Protocol: options.Protocol}
+	if options.CompatibilityUpdate {
+		candidates = compatibility.CompatibleCandidates(index, target)
+	} else {
+		candidates = compatibility.StableCandidates(index)
+	}
+	if len(candidates) == 0 {
+		printNoCompatibleRelease(options)
+		return 0
+	}
+
+	selectedMeta, release, asset, ok := selectPublishedCandidate(candidates, releases)
+	if !ok {
+		printNoCompatibleRelease(options)
+		return 0
 	}
 
 	releaseLabel := strings.TrimSpace(release.TagName)
 	if releaseLabel == "" {
 		releaseLabel = strings.TrimSpace(release.Name)
 	}
-	if releaseLabel == "" {
-		releaseLabel = "latest release"
-	}
-	fmt.Printf("[UPDATE] Latest stable release: %s\n", releaseLabel)
-
-	asset, ok := findReleaseAsset(release, releaseAssetName)
-	if !ok {
-		fmt.Printf("[INFO] %s does not contain the updater package %s.\n", releaseLabel, releaseAssetName)
-		fmt.Println("[OK] No installable release update is available yet.")
-		return 0
-	}
+	fmt.Printf("[UPDATE] Selected stable release: %s\n", releaseLabel)
 
 	fmt.Printf("[UPDATE] Downloading %s...\n", asset.Name)
 	if err := downloadFile(asset.BrowserDownloadURL, downloadZip); err != nil {
 		fmt.Fprintf(os.Stderr, "[ERROR] Download failed: %v\n", err)
+		fmt.Println("Please try again later.")
 		return 1
 	}
 
@@ -208,6 +337,23 @@ func runWorker(installRoot string) int {
 		return 1
 	}
 
+	// Verify the release's own signed-by-manifest compatibility metadata after
+	// package integrity succeeds. This catches a stale/mislabelled GitHub release.
+	packagedIndex, err := readCompatibilityIndex(filepath.Join(remoteRoot, compatibility.IndexFileName))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ERROR] Downloaded package compatibility metadata is invalid: %v\n", err)
+		return 1
+	}
+	packagedRelease, ok := compatibility.FindRelease(packagedIndex, selectedMeta.Tag)
+	if !ok || !strings.EqualFold(strings.TrimSpace(packagedRelease.BridgeVersion), strings.TrimSpace(selectedMeta.BridgeVersion)) {
+		fmt.Fprintln(os.Stderr, "[ERROR] Downloaded package does not declare the selected Bridge release. Update cancelled.")
+		return 1
+	}
+	if options.CompatibilityUpdate && !packagedRelease.Supports(target) {
+		fmt.Fprintln(os.Stderr, "[ERROR] Downloaded package does not support the detected BeamNG protocol. Update cancelled.")
+		return 1
+	}
+
 	managedRemote := withoutCompatibilityFiles(remoteManifest)
 	localManifestPath := filepath.Join(installRoot, manifestName)
 	localManifest := map[string]string{}
@@ -226,6 +372,11 @@ func runWorker(installRoot string) int {
 	}
 
 	if len(newFiles)+len(changedFiles)+len(removedFiles) == 0 {
+		if options.CompatibilityUpdate {
+			fmt.Println("[ERROR] The selected compatible release is already installed, but the running Bridge rejected the mod protocol.")
+			fmt.Println("Please try again later or report the compatibility metadata mismatch.")
+			return 1
+		}
 		fmt.Printf("[OK] The Bridge files are already up to date with %s.\n", releaseLabel)
 		return 0
 	}
@@ -233,12 +384,16 @@ func runWorker(installRoot string) int {
 	printChanges(newFiles, changedFiles, removedFiles)
 	fmt.Println()
 	fmt.Println("Diagnostic logs and files not managed by SHA256SUMS.txt will not be deleted.")
-	fmt.Print("Install this update? [Y/N]: ")
-	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	if answer != "y" && answer != "yes" {
-		fmt.Println("[UPDATE] Update cancelled by user.")
-		return 0
+	if !options.CompatibilityUpdate {
+		fmt.Print("Install this update? [Y/N]: ")
+		answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer != "y" && answer != "yes" {
+			fmt.Println("[UPDATE] Update cancelled by user.")
+			return 0
+		}
+	} else {
+		fmt.Println("[UPDATE] Compatibility update was explicitly approved from the Bridge; installing automatically.")
 	}
 
 	if err := installUpdate(installRoot, remoteRoot, backupRoot, localManifestPath, managedRemote, changedFiles, removedFiles); err != nil {
@@ -247,7 +402,222 @@ func runWorker(installRoot string) int {
 	}
 
 	fmt.Printf("[OK] Update to %s installed successfully.\n", releaseLabel)
+	if options.CompatibilityUpdate {
+		_ = os.Remove(pendingCompatibilityFilePath(installRoot))
+	}
+	if options.Relaunch {
+		launcher := filepath.Join(installRoot, "START_BRIDGE.exe")
+		fmt.Println("[UPDATE] Restarting the Bridge...")
+		cmd := exec.Command(launcher)
+		cmd.Dir = installRoot
+		if err := cmd.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] Update succeeded but the Bridge could not be restarted: %v\n", err)
+			fmt.Println("Start START_BRIDGE.exe manually.")
+			return 1
+		}
+	}
 	return 0
+}
+
+func pendingCompatibilityFilePath(installRoot string) string {
+	return filepath.Join(installRoot, "Tools and diagnostics", "Config", compatibility.PendingFileName)
+}
+
+func readPendingCompatibilityRequest(installRoot string) (compatibility.PendingTarget, bool) {
+	data, err := os.ReadFile(pendingCompatibilityFilePath(installRoot))
+	if err != nil {
+		return compatibility.PendingTarget{}, false
+	}
+	var pending compatibility.PendingTarget
+	if json.Unmarshal(data, &pending) != nil || pending.Protocol <= 0 {
+		return compatibility.PendingTarget{}, false
+	}
+	fmt.Printf("[UPDATE] Pending BeamNG compatibility request detected: mod %s / protocol %d.\n", fallbackModVersion(pending.ModVersion), pending.Protocol)
+	return pending, true
+}
+
+func fallbackModVersion(version string) string {
+	if strings.TrimSpace(version) == "" {
+		return "unknown"
+	}
+	return strings.TrimSpace(version)
+}
+
+func printNoCompatibleRelease(options updaterOptions) {
+	if options.CompatibilityUpdate {
+		modLabel := options.ModVersion
+		if modLabel == "" {
+			modLabel = "unknown"
+		}
+		fmt.Printf("[INFO] No published Bridge release compatible with BeamNG mod %s / protocol %d is available yet.\n", modLabel, options.Protocol)
+	} else {
+		fmt.Println("[INFO] No installable stable Bridge release is available yet.")
+	}
+	fmt.Println("Please try again later.")
+}
+
+func releasesAPIURL() string {
+	return fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=100", repoOwner, repoName)
+}
+
+// selectCompatibilityIndexAsset returns the newest stable published release
+// that carries BRIDGE_COMPATIBILITY.json as a release asset. The updater never
+// reads compatibility metadata from the development branch.
+func selectCompatibilityIndexAsset(releases []githubRelease) (githubRelease, githubAsset, bool) {
+	var selected githubRelease
+	var selectedAsset githubAsset
+	found := false
+	for _, release := range releases {
+		if release.Draft || release.Prerelease || strings.TrimSpace(release.TagName) == "" {
+			continue
+		}
+		asset, ok := findReleaseAsset(release, compatibility.IndexFileName)
+		if !ok {
+			continue
+		}
+		if !found || compatibility.CompareVersions(release.TagName, selected.TagName) > 0 {
+			selected, selectedAsset, found = release, asset, true
+		}
+	}
+	return selected, selectedAsset, found
+}
+
+func fetchCompatibilityIndex(releases []githubRelease) (compatibility.Index, error) {
+	release, asset, ok := selectCompatibilityIndexAsset(releases)
+	if !ok {
+		return compatibility.Index{}, fmt.Errorf("no stable GitHub Release contains %s", compatibility.IndexFileName)
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, asset.BrowserDownloadURL, nil)
+	if err != nil {
+		return compatibility.Index{}, err
+	}
+	req.Header.Set("User-Agent", "Enhanced-PS5-DualSense-Haptics-Updater")
+	resp, err := client.Do(req)
+	if err != nil {
+		return compatibility.Index{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return compatibility.Index{}, fmt.Errorf("GitHub returned HTTP %s for %s in %s", resp.Status, compatibility.IndexFileName, release.TagName)
+	}
+	var index compatibility.Index
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&index); err != nil {
+		return compatibility.Index{}, fmt.Errorf("invalid compatibility index from %s: %w", release.TagName, err)
+	}
+	if err := compatibility.Validate(index); err != nil {
+		return compatibility.Index{}, err
+	}
+	return index, nil
+}
+
+func readCompatibilityIndex(path string) (compatibility.Index, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return compatibility.Index{}, err
+	}
+	var index compatibility.Index
+	if err := json.Unmarshal(data, &index); err != nil {
+		return compatibility.Index{}, err
+	}
+	if err := compatibility.Validate(index); err != nil {
+		return compatibility.Index{}, err
+	}
+	return index, nil
+}
+
+func selectPublishedCandidate(candidates []compatibility.Release, releases []githubRelease) (compatibility.Release, githubRelease, githubAsset, bool) {
+	published := make(map[string]githubRelease, len(releases))
+	for _, release := range releases {
+		if release.Draft || release.Prerelease || strings.TrimSpace(release.TagName) == "" {
+			continue
+		}
+		published[strings.ToLower(strings.TrimSpace(release.TagName))] = release
+	}
+	for _, candidate := range candidates {
+		release, ok := published[strings.ToLower(strings.TrimSpace(candidate.Tag))]
+		if !ok {
+			continue
+		}
+		asset, ok := findReleaseAsset(release, candidate.NormalizedAsset())
+		if !ok {
+			continue
+		}
+		return candidate, release, asset, true
+	}
+	return compatibility.Release{}, githubRelease{}, githubAsset{}, false
+}
+
+func fetchPublishedReleases() ([]githubRelease, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, releasesAPIURL(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "Enhanced-PS5-DualSense-Haptics-Updater")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("GitHub returned HTTP %s while listing releases", resp.Status)
+	}
+	var releases []githubRelease
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("invalid GitHub releases response: %w", err)
+	}
+	return releases, nil
+}
+
+func waitForPID(pid int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		running, err := pidRunning(pid)
+		if err != nil || !running {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func pidRunning(pid int) (bool, error) {
+	cmd := exec.Command("tasklist.exe", "/FI", fmt.Sprintf("PID eq %d", pid), "/NH")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, err
+	}
+	return strings.Contains(string(output), strconv.Itoa(pid)), nil
+}
+
+func waitForBridgeProcesses(installRoot string, timeout time.Duration) bool {
+	_ = installRoot
+	names := []string{
+		"EnhancedPS5DualSenseHapticsUSB.exe",
+		"EnhancedPS5DualSenseHapticsBluetooth.exe",
+		"START_BRIDGE.exe",
+		"START_BRIDGE_AND_BEAMNG.exe",
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		anyRunning := false
+		for _, process := range names {
+			running, err := processRunning(process)
+			if err == nil && running {
+				anyRunning = true
+				break
+			}
+		}
+		if !anyRunning {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
 }
 
 func withoutCompatibilityFiles(manifest map[string]string) map[string]string {
@@ -409,39 +779,6 @@ func printChanges(newFiles, changedFiles, removedFiles []string) {
 			fmt.Printf("  - %s\n", file)
 		}
 	}
-}
-
-func latestReleaseAPIURL() string {
-	return fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", repoOwner, repoName)
-}
-
-func fetchLatestRelease() (githubRelease, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest(http.MethodGet, latestReleaseAPIURL(), nil)
-	if err != nil {
-		return githubRelease{}, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("User-Agent", "Enhanced-PS5-DualSense-Haptics-Updater")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return githubRelease{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return githubRelease{}, fmt.Errorf("GitHub returned HTTP %s", resp.Status)
-	}
-
-	var release githubRelease
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&release); err != nil {
-		return githubRelease{}, fmt.Errorf("invalid GitHub release response: %w", err)
-	}
-	if strings.TrimSpace(release.TagName) == "" && strings.TrimSpace(release.Name) == "" {
-		return githubRelease{}, errors.New("GitHub returned a release without a name or tag")
-	}
-	return release, nil
 }
 
 func findReleaseAsset(release githubRelease, name string) (githubAsset, bool) {
@@ -629,16 +966,34 @@ func verifyPackage(root string, manifest map[string]string) error {
 }
 
 func fileSHA256(path string) (string, error) {
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
+
+	// SHA256SUMS.txt is generated from Git's canonical LF representation so a
+	// Windows CRLF working tree and the release ZIP verify identically. Match the
+	// generator exactly: files containing NUL are binary; other files normalize
+	// CRLF and lone CR to LF before hashing.
+	if bytes.IndexByte(data, 0) < 0 {
+		write := 0
+		for read := 0; read < len(data); read++ {
+			if data[read] == '\r' {
+				if read+1 < len(data) && data[read+1] == '\n' {
+					read++
+				}
+				data[write] = '\n'
+				write++
+				continue
+			}
+			data[write] = data[read]
+			write++
+		}
+		data = data[:write]
 	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func copyFile(source, destination string) error {

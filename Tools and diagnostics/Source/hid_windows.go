@@ -204,35 +204,6 @@ func findBluetoothDualSense() (*device, error) {
 	}
 	return d, nil
 }
-func (d *device) readReportOnce() ([]byte, error) {
-	if d == nil || !validHandle(d.handle) {
-		return nil, fmt.Errorf("controller is closed")
-	}
-	if d.inputLen <= 0 {
-		return nil, fmt.Errorf("invalid HID input report size: %d", d.inputLen)
-	}
-	buf := make([]byte, d.inputLen)
-	var read uint32
-	r, _, callErr := procReadFile.Call(
-		uintptr(d.handle),
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(len(buf)),
-		uintptr(unsafe.Pointer(&read)),
-		0,
-	)
-	runtime.KeepAlive(buf)
-	if r == 0 {
-		if errno, ok := callErr.(syscall.Errno); ok && errno == 0 {
-			return nil, fmt.Errorf("ReadFile failed without a Win32 error code")
-		}
-		return nil, fmt.Errorf("ReadFile: %v", callErr)
-	}
-	if read == 0 {
-		return nil, fmt.Errorf("ReadFile returned an empty report")
-	}
-	return buf[:read], nil
-}
-
 func (d *device) writeReport(report []byte) error {
 	if d == nil || !validHandle(d.handle) {
 		return fmt.Errorf("controller is closed")
@@ -251,7 +222,9 @@ func (d *device) writeReport(report []byte) error {
 		wire = make([]byte, d.outputLen)
 		copy(wire, report)
 		if !d.writeNormalizationLogged {
-			fmt.Printf("Windows HID route validated: logical %d-byte report padded to %d bytes.\n", len(report), len(wire))
+			if runtimeDiagnosticsEnabled() {
+				fmt.Printf("Windows HID route validated: logical %d-byte report padded to %d bytes.\n", len(report), len(wire))
+			}
 			d.writeNormalizationLogged = true
 		}
 	}

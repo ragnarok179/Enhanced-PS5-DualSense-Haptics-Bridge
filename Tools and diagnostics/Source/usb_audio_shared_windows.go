@@ -122,39 +122,44 @@ type wasapiCandidate struct {
 }
 
 type hapticAudioEngine struct {
-	mu               sync.Mutex
-	enumerator       uintptr
-	device           uintptr
-	audioClient      uintptr
-	renderClient     uintptr
-	endpointID       string
-	deviceName       string
-	formatName       string
-	channels         int
-	sampleRate       int
-	bits             int
-	blockAlign       int
-	floatPCM         bool
-	leftChannel      int
-	rightChannel     int
-	bufferFrames     uint32
-	closed           bool
-	renderTicks      uint64
-	releasedBuffers  uint64
-	releasedFrames   uint64
-	nonSilentBuffers uint64
-	nonSilentFrames  uint64
-	silentFrames     uint64
-	paddingErrors    uint64
-	getBufferErrors  uint64
-	releaseErrors    uint64
-	lastHRESULT      string
-	stop             chan struct{}
-	done             chan struct{}
-	comInitialized   bool
+	mu                sync.Mutex
+	enumerator        uintptr
+	device            uintptr
+	audioClient       uintptr
+	renderClient      uintptr
+	endpointID        string
+	deviceName        string
+	formatName        string
+	channels          int
+	sampleRate        int
+	bits              int
+	blockAlign        int
+	floatPCM          bool
+	leftChannel       int
+	rightChannel      int
+	bufferFrames      uint32
+	requestedBufferMS float64
+	defaultPeriodMS   float64
+	primeFrames       uint32
+	closed            bool
+	renderTicks       uint64
+	releasedBuffers   uint64
+	releasedFrames    uint64
+	nonSilentBuffers  uint64
+	nonSilentFrames   uint64
+	silentFrames      uint64
+	paddingErrors     uint64
+	getBufferErrors   uint64
+	releaseErrors     uint64
+	lastHRESULT       string
+	stop              chan struct{}
+	done              chan struct{}
+	comInitialized    bool
 
-	sharedMode bool
-	sharedPCM  sharedPCMQueue
+	sharedMode   bool
+	sharedPCM    sharedPCMQueue
+	scratchLeft  []float64
+	scratchRight []float64
 }
 
 func hresultFailed(v uintptr) bool { return int32(uint32(v)) < 0 }
@@ -586,8 +591,23 @@ func openWASAPIEngine(enumerator uintptr, dev uintptr, endpoint string, leftChan
 	if rightChannel < 0 || rightChannel >= channels {
 		rightChannel = channels - 1
 	}
-	// 100 ms shared-mode buffer. WASAPI may choose a different actual size.
-	hr, _, _ := comCall(client, 3, audclntSharemodeShared, audclntStreamflagsNoPersist, uintptr(1000000), 0, mem, 0)
+	// The previous public build requested a 100 ms shared-mode buffer and then
+	// kept it full. For haptics that translates directly into perceptible input
+	// latency. Request roughly two Windows engine periods instead (normally
+	// around 20 ms) and, below, never queue silence just to keep that buffer full.
+	var defaultPeriod100ns, minimumPeriod100ns int64
+	periodHR, _, _ := comCall(client, 9, uintptr(unsafe.Pointer(&defaultPeriod100ns)), uintptr(unsafe.Pointer(&minimumPeriod100ns)))
+	requestedDuration100ns := int64(200000) // 20 ms fallback; REFERENCE_TIME is 100 ns units.
+	if !hresultFailed(periodHR) && defaultPeriod100ns > 0 {
+		requestedDuration100ns = defaultPeriod100ns * 2
+		if requestedDuration100ns < 100000 {
+			requestedDuration100ns = 100000 // 10 ms floor for broad shared-mode compatibility.
+		}
+		if requestedDuration100ns > 300000 {
+			requestedDuration100ns = 300000 // avoid reintroducing a large queued-latency window.
+		}
+	}
+	hr, _, _ := comCall(client, 3, audclntSharemodeShared, audclntStreamflagsNoPersist, uintptr(requestedDuration100ns), 0, mem, 0)
 	procCoTaskMemFree.Call(mem)
 	if hresultFailed(hr) {
 		comRelease(client)
@@ -610,18 +630,38 @@ func openWASAPIEngine(enumerator uintptr, dev uintptr, endpoint string, leftChan
 	if strings.TrimSpace(name) == "" {
 		name = "Endpoint haptique GameInput"
 	}
+	defaultPeriodMS := 0.0
+	if defaultPeriod100ns > 0 {
+		defaultPeriodMS = float64(defaultPeriod100ns) / 10000.0
+	}
+	primeFrames := uint32(0)
+	if rate > 0 {
+		primeMS := defaultPeriodMS
+		if primeMS <= 0 {
+			primeMS = 5.0
+		}
+		primeFrames = uint32(math.Round(float64(rate) * primeMS / 1000.0))
+		if primeFrames > frames {
+			primeFrames = frames
+		}
+	}
 	h := &hapticAudioEngine{
 		enumerator: enumerator, device: dev, audioClient: client, renderClient: render,
 		endpointID: endpoint, deviceName: name, formatName: desc,
 		channels: channels, sampleRate: rate, bits: bits, blockAlign: block, floatPCM: floatPCM,
 		leftChannel: leftChannel, rightChannel: rightChannel, bufferFrames: frames,
+		requestedBufferMS: float64(requestedDuration100ns) / 10000.0, defaultPeriodMS: defaultPeriodMS, primeFrames: primeFrames,
 		stop: make(chan struct{}), done: make(chan struct{}),
 	}
-	// Prime the full buffer with silence before Start.
-	var p uintptr
-	hr, _, _ = comCall(render, 3, uintptr(frames), uintptr(unsafe.Pointer(&p)))
-	if !hresultFailed(hr) && p != 0 {
-		comCall(render, 4, uintptr(frames), audclntBufferflagsSilent)
+	// Prime only one engine period. The render loop never pads the rest of the
+	// buffer with future silence, so new haptic PCM can reach the next available
+	// audio period instead of waiting behind a persistent 100 ms queue.
+	if primeFrames > 0 {
+		var p uintptr
+		hr, _, _ = comCall(render, 3, uintptr(primeFrames), uintptr(unsafe.Pointer(&p)))
+		if !hresultFailed(hr) && p != 0 {
+			comCall(render, 4, uintptr(primeFrames), audclntBufferflagsSilent)
+		}
 	}
 	hr, _, _ = comCall(client, 10)
 	if hresultFailed(hr) {
@@ -764,9 +804,15 @@ func (h *hapticAudioEngine) mixSharedPCM(dst []byte, frames int) bool {
 	if h == nil || !h.sharedMode || frames <= 0 {
 		return false
 	}
-	left, right := h.sharedPCM.render(frames, h.sampleRate)
+	if cap(h.scratchLeft) < frames {
+		h.scratchLeft = make([]float64, frames)
+		h.scratchRight = make([]float64, frames)
+	}
+	left := h.scratchLeft[:frames]
+	right := h.scratchRight[:frames]
+	rendered := h.sharedPCM.renderInto(left, right, h.sampleRate)
 	wrote := false
-	for frame := 0; frame < frames && frame < len(left) && frame < len(right); frame++ {
+	for frame := 0; frame < rendered; frame++ {
 		lv, rv := clampAudioSample(left[frame]), clampAudioSample(right[frame])
 		if math.Abs(lv) > 0.000001 || math.Abs(rv) > 0.000001 {
 			wrote = true
@@ -823,6 +869,21 @@ func (h *hapticAudioEngine) renderLoop() {
 				continue
 			}
 			available := h.bufferFrames - padding
+			if available == 0 {
+				h.mu.Unlock()
+				continue
+			}
+			// Write only PCM that actually exists in the Common Feel queue. Filling
+			// every free WASAPI frame with silence keeps the hardware buffer full and
+			// delays the next real haptic event by the entire buffer duration.
+			queued := h.sharedPCM.availableOutputFrames(h.sampleRate)
+			if queued <= 0 {
+				h.mu.Unlock()
+				continue
+			}
+			if uint32(queued) < available {
+				available = uint32(queued)
+			}
 			if available == 0 {
 				h.mu.Unlock()
 				continue

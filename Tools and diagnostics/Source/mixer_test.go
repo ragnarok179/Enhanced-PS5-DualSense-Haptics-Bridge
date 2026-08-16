@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"os"
 	"testing"
@@ -108,27 +109,25 @@ func TestSharedWatchdog1200MS(t *testing.T) {
 	}
 }
 
-func TestControlReportTriggersLEDAndCRC(t *testing.T) {
+func TestControlReportTriggersAndCRC(t *testing.T) {
 	input := telemetry{
-		Version: 40, Active: true, ShiftLEDsInUse: true,
+		Version: 40, Active: true,
 		L2Mode: 1, L2StartZone: 0, L2StartStrength: 2, L2EndStrength: 6,
 		R2Mode: 3, R2StartZone: 0, R2StartStrength: 1,
-		Raw: &rawTelemetry{RPM: 6800, MaxRPM: 7000, EngineRunning: true},
 	}
-	rgb := (&lightbarController{}).update(input, time.Unix(1000, 0))
-	r := buildBluetoothControlReport(5, input, rgb, 547)
+	r := buildBluetoothTriggerControlReport(5, input, 547)
 	if len(r) != 78 || r[0] != 0x31 || r[1] != 0x50 || r[2] != 0x10 {
 		t.Fatalf("bad control header %v", r[:8])
 	}
 	common := r[3:50]
-	if common[0] != 0x0C || common[1] != 0x04 || common[38] != 0 {
-		t.Fatalf("bad minimal valid flags %02x %02x %02x", common[0], common[1], common[38])
+	if common[0] != 0x0C || common[1] != 0 || common[38] != 0 {
+		t.Fatalf("bad trigger-only valid flags %02x %02x %02x", common[0], common[1], common[38])
 	}
 	if common[10] != 0x01 || common[21] != 0x21 {
 		t.Fatalf("trigger modes R2=%02x L2=%02x", common[10], common[21])
 	}
-	if common[44] == 0 && common[45] == 0 && common[46] == 0 {
-		t.Fatal("expected RPM light color")
+	if common[44] != 0 || common[45] != 0 || common[46] != 0 {
+		t.Fatalf("trigger-only report carries RGB: %02x%02x%02x", common[44], common[45], common[46])
 	}
 	got := binary.LittleEndian.Uint32(r[74:78])
 	want := sonyBluetoothCRC(r, 78)
@@ -138,9 +137,9 @@ func TestControlReportTriggersLEDAndCRC(t *testing.T) {
 }
 
 func TestExactGamepadCoreTransportLengthsAndState(t *testing.T) {
-	c := buildBluetoothControlReport(0, telemetry{}, [3]byte{}, 547)
+	c := buildBluetoothTriggerControlReport(0, telemetry{}, 547)
 	h := buildBluetoothHapticReport32(9, 1, make([]int8, 64), 547)
-	c2 := buildBluetoothControlReport(1, telemetry{}, [3]byte{}, 547)
+	c2 := buildBluetoothTriggerControlReport(1, telemetry{}, 547)
 	if len(c) != 78 || len(h) != 142 {
 		t.Fatalf("wrong protocol lengths control=%d haptic=%d", len(c), len(h))
 	}
@@ -208,23 +207,15 @@ func TestSharedDoesNotApplyBluetoothGammaBoost(t *testing.T) {
 	}
 }
 
-func TestMaskedControlDoesNotTouchUnrelatedGroups(t *testing.T) {
+func TestTriggerControlDoesNotTouchUnrelatedGroups(t *testing.T) {
 	state := telemetry{Version: 40, Active: true, L2Mode: 1, L2StartZone: 1, L2StartStrength: 2, L2EndStrength: 4, R2Mode: 1, R2StartZone: 1, R2StartStrength: 2, R2EndStrength: 4}
-	triggerOnly := buildBluetoothControlReportMasked(0, state, [3]byte{200, 30, 10}, 547, true, false)
-	common := triggerOnly[3:50]
+	report := buildBluetoothTriggerControlReport(0, state, 547)
+	common := report[3:50]
 	if common[0] != 0x0C || common[1] != 0 || common[38] != 0 {
 		t.Fatalf("trigger mask leaked into unrelated groups: %02x %02x %02x", common[0], common[1], common[38])
 	}
 	if common[44] != 0 || common[45] != 0 || common[46] != 0 {
 		t.Fatal("trigger-only packet rewrote the lightbar")
-	}
-	ledOnly := buildBluetoothControlReportMasked(0, state, [3]byte{200, 30, 10}, 547, false, true)
-	common = ledOnly[3:50]
-	if common[0] != 0 || common[1] != 0x04 || common[38] != 0 {
-		t.Fatalf("LED mask leaked into unrelated groups: %02x %02x %02x", common[0], common[1], common[38])
-	}
-	if common[10] != 0 || common[21] != 0 {
-		t.Fatal("LED-only packet rewrote adaptive triggers")
 	}
 }
 
@@ -253,11 +244,11 @@ func TestSharedRPMLEDThresholds(t *testing.T) {
 	c := &lightbarController{}
 	base := time.Unix(2000, 0)
 	state := telemetry{Version: 40, Active: true, ShiftLEDsInUse: true, Raw: &rawTelemetry{MaxRPM: 7000, EngineRunning: true}}
-	state.Raw.RPM = 0.699 * state.Raw.MaxRPM
+	state.Raw.RPM = 0.499 * state.Raw.MaxRPM
 	if got := c.update(state, base); got != ([3]byte{}) {
-		t.Fatalf("USB LED should be off below 70%%: %v", got)
+		t.Fatalf("USB LED should be off below 50%%: %v", got)
 	}
-	state.Raw.RPM = 0.70 * state.Raw.MaxRPM
+	state.Raw.RPM = 0.50 * state.Raw.MaxRPM
 	if got := c.update(state, base); got != ([3]byte{0, 48, 0}) {
 		t.Fatalf("USB first LED mismatch: %v", got)
 	}
@@ -349,18 +340,17 @@ func TestSuspensionBumpKeepsImpactedSideSurfaceLayer(t *testing.T) {
 	}
 }
 
-func TestRuntimeControlNeverSelectsCompatibleRumbleOrAudioRoute(t *testing.T) {
-	state := telemetry{Version: protocolVersion, Active: true, L2Mode: 1, L2StartZone: 0, L2StartStrength: 2, L2EndStrength: 6, R2Mode: 1, R2StartZone: 0, R2StartStrength: 1, R2EndStrength: 2}
-	triggers := buildBluetoothControlReportMasked(0, state, [3]byte{}, 547, true, false)
-	if triggers[3] != 0x0C || triggers[4] != 0x00 {
-		t.Fatalf("trigger mask=%02x/%02x want 0c/00", triggers[3], triggers[4])
+func TestRuntimeControlNeverSelectsCompatibleRumbleAudioOrLED(t *testing.T) {
+	state := telemetry{Version: protocolVersion, Active: true, L2Effect: wireEffect(resistanceTrigger(0, 0.25, 0.75)), R2Effect: wireEffect(resistanceTrigger(0, 0.125, 0.25))}
+	report := buildBluetoothTriggerControlReport(0, state, 547)
+	if report[3] != 0x0C || report[4] != 0x00 {
+		t.Fatalf("trigger mask=%02x/%02x want 0c/00", report[3], report[4])
 	}
-	if triggers[5] != 0 || triggers[6] != 0 {
-		t.Fatalf("compatible rumble bytes changed: %02x %02x", triggers[5], triggers[6])
+	if report[5] != 0 || report[6] != 0 {
+		t.Fatalf("compatible rumble bytes changed: %02x %02x", report[5], report[6])
 	}
-	led := buildBluetoothControlReportMasked(0, state, [3]byte{64, 120, 0}, 547, false, true)
-	if led[3] != 0 || led[4] != 0x04 {
-		t.Fatalf("LED mask=%02x/%02x want 00/04", led[3], led[4])
+	if report[47] != 0 || report[48] != 0 || report[49] != 0 {
+		t.Fatalf("RGB bytes changed: %02x%02x%02x", report[47], report[48], report[49])
 	}
 }
 
@@ -402,27 +392,93 @@ func TestSharedShiftCue(t *testing.T) {
 func TestSharedABSHybridPulse(t *testing.T) {
 	var state absPulseState
 	base := time.Unix(6000, 0)
-	cmd := telemetry{Active: true, L2Mode: 2, L2Amplitude: 5, Raw: &rawTelemetry{ABS: true, ABSSeverity: .8, ABSWheelCount: 1, ABSControlHz: 100}}
+	cmd := telemetry{Active: true, L2Mode: 2, L2Amplitude: 5, Raw: &rawTelemetry{ABS: true, ABSSeverity: .8, ABSWheelCount: 1, ABSControlHz: 100, Brake: .75}}
 	got, active, phase, _, _, _, _ := applyABSHybridPulse(cmd, base, &state)
-	if !active || phase != "release_off" || got.L2Mode != 0 {
-		t.Fatalf("ABS release mismatch active=%t phase=%s mode=%d", active, phase, got.L2Mode)
+	if !active || phase != "release_off" || got.L2Mode != 0 || got.L2StartStrength != 0 || got.L2EndStrength != 0 {
+		t.Fatalf("ABS release mismatch active=%t phase=%s state=%+v", active, phase, got)
 	}
 	got, active, phase, _, _, _, _ = applyABSHybridPulse(cmd, base.Add(8*time.Millisecond), &state)
-	if !active || phase != "kick" || got.L2Mode != 1 || got.L2StartStrength != 6 || got.L2EndStrength != 6 {
+	if !active || phase != "kick" || got.L2Mode != 1 || got.L2StartStrength != 36 || got.L2EndStrength != 36 {
 		t.Fatalf("ABS kick mismatch %+v %s", got, phase)
 	}
 	got, active, phase, _, _, _, _ = applyABSHybridPulse(cmd, base.Add(25*time.Millisecond), &state)
-	if !active || phase != "base_1_over_8" || got.L2StartStrength != 1 || got.L2EndStrength != 1 {
+	if !active || phase != "base" || got.L2StartStrength != 6 || got.L2EndStrength != 6 {
 		t.Fatalf("ABS base mismatch %+v %s", got, phase)
+	}
+}
+
+func TestABSUserStrengthAndDisable(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+
+	setUserSettingValue(5, 28)
+	var state absPulseState
+	baseTime := time.Unix(6500, 0)
+	cmd := telemetry{Active: true, L2Mode: 2, Raw: &rawTelemetry{ABS: true, ABSSeverity: .8, ABSWheelCount: 1, ABSControlHz: 100, Brake: .7}}
+	_, _, _, _, kick, _, _ := applyABSHybridPulse(cmd, baseTime.Add(8*time.Millisecond), &state)
+	if kick != 28 {
+		t.Fatalf("custom ABS strength=%d want 28/48", kick)
+	}
+
+	setUserSettingEnabled(5, false)
+	got, active, phase, _, _, _, _ := applyABSHybridPulse(cmd, baseTime.Add(16*time.Millisecond), &state)
+	if active || phase != "disabled" {
+		t.Fatalf("disabled ABS remained active: active=%t phase=%s state=%+v", active, phase, got)
+	}
+}
+
+func TestNormalL2UsesRawUserStrengthAndCanDisable(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+
+	setUserSettingValue(4, 14)
+	settings := currentUserSettings()
+	got := applyNormalL2Settings(telemetry{Active: true, L2Mode: 1, Raw: &rawTelemetry{Brake: .5}}, settings)
+	if got.L2Mode != 1 || got.L2EndStrength != 14 || got.L2StartStrength < 1 || got.L2StartStrength > 14 {
+		t.Fatalf("raw L2 setting not applied: %+v", got)
+	}
+
+	setUserSettingEnabled(3, false)
+	got = applyNormalL2Settings(got, currentUserSettings())
+	if got.L2Mode != 0 || got.L2StartStrength != 0 || got.L2EndStrength != 0 {
+		t.Fatalf("disabled L2 still active: %+v", got)
+	}
+}
+
+func TestNormalTriggerStartEndRanges(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	s := currentUserSettings()
+	s.AdaptiveTriggers.L2BrakeStartStrength = 6
+	s.AdaptiveTriggers.L2BrakeEndStrength = 24
+	s.AdaptiveTriggers.R2ThrottleStartStrength = 6
+	s.AdaptiveTriggers.R2ThrottleEndStrength = 30
+	userSettingsState.mu.Lock()
+	userSettingsState.data = s
+	userSettingsState.mu.Unlock()
+
+	l2 := applyNormalL2Settings(telemetry{Active: true, Raw: &rawTelemetry{Brake: .7}}, currentUserSettings())
+	if l2.L2StartStrength != 6 || l2.L2EndStrength != 24 {
+		t.Fatalf("L2 range mismatch: %+v", l2)
+	}
+	r2 := applyNormalR2Settings(telemetry{Active: true, Raw: &rawTelemetry{Throttle: .7}}, currentUserSettings())
+	if r2.R2StartStrength != 6 || r2.R2EndStrength != 30 {
+		t.Fatalf("R2 range mismatch: %+v", r2)
+	}
+
+	buf := make([]byte, 11)
+	fillTrigger(buf, 1, 0, r2.R2StartStrength, r2.R2EndStrength, 0, 0)
+	if buf[0] != 0x21 {
+		t.Fatalf("progressive R2 did not build official feedback report: %v", buf)
 	}
 }
 
 func TestSharedR2BaselineAndSlip(t *testing.T) {
 	var state adaptiveThrottleTriggerState
 	now := time.Unix(7000, 0)
-	cmd := telemetry{Active: true, R2Mode: 1, R2StartZone: 0, R2StartStrength: 1, R2EndStrength: 2, Raw: &rawTelemetry{EngineRunning: true, DrivenSlip: 0}}
+	cmd := telemetry{Active: true, R2Mode: 1, R2StartZone: 0, R2StartStrength: 32, R2EndStrength: 64, Raw: &rawTelemetry{EngineRunning: true, DrivenSlip: 0}}
 	got, active, _, _, _ := applyAdaptiveThrottleTrigger(cmd, now, &state, false)
-	if active || got.R2Mode != 1 || got.R2StartStrength != 1 || got.R2EndStrength != 1 {
+	if active || got.R2Mode != 1 || got.R2StartStrength != 6 || got.R2EndStrength != 6 {
 		t.Fatalf("R2 baseline mismatch %+v", got)
 	}
 	cmd.Raw.Wheelspin = true
@@ -433,13 +489,13 @@ func TestSharedR2BaselineAndSlip(t *testing.T) {
 	}
 }
 
-func TestSharedR2AirborneIsExactOneOver255(t *testing.T) {
+func TestSharedR2AirborneIsExactOneOver48(t *testing.T) {
 	var state adaptiveThrottleTriggerState
 	now := time.Unix(7050, 0)
 	cmd := telemetry{Active: true, Raw: &rawTelemetry{EngineRunning: true, Airborne: true, GroundedWheels: 0, Wheelspin: true, DrivenSlip: 20, TCS: true, RevLimiter: true}}
 	got, active, _, _, _ := applyAdaptiveThrottleTrigger(cmd, now, &state, true)
 	if !active || got.R2Mode != 3 || got.R2StartZone != 0 || got.R2StartStrength != 1 || got.R2EndStrength != 1 || got.R2Amplitude != 0 || got.R2Hz != 0 {
-		t.Fatalf("airborne R2 must be exact 1/255: %+v", got)
+		t.Fatalf("airborne R2 must be exact 1/48: %+v", got)
 	}
 }
 
@@ -473,23 +529,19 @@ func TestSharedLEDOnlyBlinksOnRevLimiter(t *testing.T) {
 }
 
 func TestAllInOne36Layout(t *testing.T) {
-	state := telemetry{Version: 40, Active: true, L2Mode: 1, L2StartZone: 32, L2StartStrength: 5, L2EndStrength: 6, R2Mode: 2, R2StartZone: 40, R2Amplitude: 4, R2Hz: 30}
-	rgb := [3]byte{16, 88, 200}
-	setState := buildBluetoothSetStateData63(state, rgb)
+	state := telemetry{Version: 40, Active: true, L2Mode: 1, L2StartZone: 3, L2StartStrength: 5, L2EndStrength: 6, R2Mode: 2, R2StartZone: 4, R2Amplitude: 4, R2Hz: 30}
+	setState := buildBluetoothSetStateData63(state)
 	if len(setState) != 63 {
 		t.Fatalf("state len=%d", len(setState))
 	}
-	if setState[0] != 0xFD || setState[1] != 0x84 {
+	if setState[0] != 0xFD || setState[1] != 0x00 {
 		t.Fatalf("state flags=%02x/%02x", setState[0], setState[1])
 	}
 	if setState[6] != 0x40 || setState[7] != 0x09 || setState[9] != 0x00 || setState[38] != 0x00 {
 		t.Fatalf("persistent state mismatch mic=%02x audio=%02x powerSave=%02x valid3=%02x", setState[6], setState[7], setState[9], setState[38])
 	}
-	if setState[41] != 0x00 {
-		t.Fatalf("runtime lightbar setup must stay clear, got %02x", setState[41])
-	}
-	if setState[44] != rgb[0] || setState[45] != rgb[1] || setState[46] != rgb[2] {
-		t.Fatalf("RGB shifted in SetStateData")
+	if setState[41] != 0x00 || setState[44] != 0 || setState[45] != 0 || setState[46] != 0 {
+		t.Fatalf("runtime 0x36 state owns LED fields: setup=%02x rgb=%02x%02x%02x", setState[41], setState[44], setState[45], setState[46])
 	}
 	// Critical regression guard: no USB report-id 0x02 may prefix SetStateData.
 	if setState[0] == 0x02 {
@@ -507,11 +559,11 @@ func TestAllInOne36Layout(t *testing.T) {
 	if r[11] != 0x90 || r[12] != 63 {
 		t.Fatalf("missing SetStateData sized packet")
 	}
-	if r[13] != 0xFD || r[14] != 0x84 {
+	if r[13] != 0xFD || r[14] != 0x00 {
 		t.Fatalf("SetStateData offset is wrong: %x", r[13:16])
 	}
-	if r[57] != rgb[0] || r[58] != rgb[1] || r[59] != rgb[2] {
-		t.Fatalf("RGB wrong in combined packet")
+	if r[57] != 0 || r[58] != 0 || r[59] != 0 {
+		t.Fatalf("combined packet carries RGB: %02x%02x%02x", r[57], r[58], r[59])
 	}
 	if r[76] != 0x92 || r[77] != 64 || int8(r[78]) != 70 || int8(r[79]) != -70 {
 		t.Fatalf("haptic offset wrong")
@@ -523,10 +575,9 @@ func TestAllInOne36Layout(t *testing.T) {
 	}
 }
 
-func TestAllInOneCarriesTriggersLEDAndHapticsTogether(t *testing.T) {
-	state := telemetry{Version: 40, Active: true, L2Mode: 1, L2StartZone: 20, L2StartStrength: 4, L2EndStrength: 6, R2Mode: 1, R2StartZone: 18, R2StartStrength: 3, R2EndStrength: 5}
-	rgb := [3]byte{224, 32, 0}
-	ss := buildBluetoothSetStateData63(state, rgb)
+func TestAllInOneCarriesTriggersAndHapticsWithoutLED(t *testing.T) {
+	state := telemetry{Version: 40, Active: true, L2Mode: 1, L2StartZone: 2, L2StartStrength: 4, L2EndStrength: 6, R2Mode: 1, R2StartZone: 2, R2StartStrength: 3, R2EndStrength: 5}
+	ss := buildBluetoothSetStateData63(state)
 	samples := make([]int8, 64)
 	for i := range samples {
 		if i%2 == 0 {
@@ -539,8 +590,8 @@ func TestAllInOneCarriesTriggersLEDAndHapticsTogether(t *testing.T) {
 	if r[23] == 0x05 || r[34] == 0x05 {
 		t.Fatalf("trigger state missing from combined report")
 	}
-	if r[57] != 224 || r[58] != 32 || r[59] != 0 {
-		t.Fatalf("LED missing from combined report")
+	if r[57] != 0 || r[58] != 0 || r[59] != 0 {
+		t.Fatalf("combined report must not own LED state")
 	}
 	if countNonSilent(samples) != 64 {
 		t.Fatalf("haptic payload unexpectedly silent")
@@ -722,7 +773,7 @@ func TestSharedFeelSyntheticCooldownSlowsAtLowSpeed(t *testing.T) {
 	}
 }
 
-func TestSharedFeelShiftR2ExactOneOver255(t *testing.T) {
+func TestSharedFeelShiftR2ExactOneOver48(t *testing.T) {
 	var st adaptiveThrottleTriggerState
 	tm := time.Unix(9000, 0)
 	cmd := telemetry{Active: true, Raw: &rawTelemetry{EngineRunning: true}}
@@ -783,7 +834,7 @@ func TestSharedFeelOppositeImpactsMergeBilateral(t *testing.T) {
 
 func TestSharedFeelProfileLoadsDefaults(t *testing.T) {
 	p := feelProfile()
-	if p.ProfileVersion == "" || p.Triggers.ABS.KickStrength8 != 6 || p.Triggers.R2.ShiftDurationMS != 150 || p.ShiftHaptic.Priority != 25 {
+	if p.ProfileVersion == "" || math.Abs(p.Triggers.ABS.KickForce-36.0/48.0) > 1e-9 || math.Abs(p.Triggers.L2.NormalEndForce-24.0/48.0) > 1e-9 || p.Triggers.R2.ShiftDurationMS != 150 || p.ShiftHaptic.Priority != 25 {
 		t.Fatalf("shared profile mismatch %+v", p)
 	}
 }
@@ -797,12 +848,12 @@ func TestSharedFeelEngineShiftCutIsExactlyEventTimed(t *testing.T) {
 	state.ShiftEvent = 2
 	frame := e.step(state, base.Add(10*time.Millisecond), base.Add(10*time.Millisecond), canonicalFramesForBluetoothFrames(32))
 	if frame.Control.R2Mode != 3 || frame.Control.R2StartZone != 0 || frame.Control.R2StartStrength != 1 {
-		t.Fatalf("shift cut did not start with exact 1/255: %+v", frame.Control)
+		t.Fatalf("shift cut did not start with exact 1/48: %+v", frame.Control)
 	}
 	// Raw.Shifting stays true deliberately: it must not extend the 150 ms event window.
 	state.Raw.Shifting = true
 	frame = e.step(state, base.Add(170*time.Millisecond), base.Add(170*time.Millisecond), canonicalFramesForBluetoothFrames(32))
-	if frame.Control.R2Mode != 1 || frame.Control.R2StartStrength != 1 || frame.Control.R2EndStrength != 1 {
+	if frame.Control.R2Mode != 1 || frame.Control.R2StartStrength != 6 || frame.Control.R2EndStrength != 6 {
 		t.Fatalf("shift cut was extended beyond 150 ms by Raw.Shifting: %+v", frame.Control)
 	}
 }
@@ -811,17 +862,17 @@ func TestSharedFeelLEDNoFlickerAroundFirstThreshold(t *testing.T) {
 	c := &lightbarController{}
 	base := time.Unix(13000, 0)
 	state := telemetry{Version: 40, Active: true, ShiftLEDsInUse: true, Raw: &rawTelemetry{EngineRunning: true, MaxRPM: 7000}}
-	state.Raw.RPM = 5000 // 71.4%, activate
+	state.Raw.RPM = 3600 // 51.4%, activate
 	first := c.update(state, base)
 	if first == ([3]byte{}) || c.status() != "progress" {
 		t.Fatalf("LED did not enter progress phase: %v %s", first, c.status())
 	}
-	// Oscillate around the 70% threshold for one second. It must never go black.
+	// Oscillate around the 50% threshold for one second. It must never go black.
 	for i := 1; i <= 40; i++ {
 		if i%2 == 0 {
-			state.Raw.RPM = 4865
+			state.Raw.RPM = 3465
 		} else {
-			state.Raw.RPM = 4935
+			state.Raw.RPM = 3535
 		}
 		got := c.update(state, base.Add(time.Duration(i)*25*time.Millisecond))
 		if got == ([3]byte{}) {
@@ -833,9 +884,9 @@ func TestSharedFeelLEDNoFlickerAroundFirstThreshold(t *testing.T) {
 func TestSharedFeelLEDTurnsOffOnlyAfterSustainedLowRPM(t *testing.T) {
 	c := &lightbarController{}
 	base := time.Unix(14000, 0)
-	state := telemetry{Version: 40, Active: true, ShiftLEDsInUse: true, Raw: &rawTelemetry{EngineRunning: true, MaxRPM: 7000, RPM: 5200}}
+	state := telemetry{Version: 40, Active: true, ShiftLEDsInUse: true, Raw: &rawTelemetry{EngineRunning: true, MaxRPM: 7000, RPM: 3600}}
 	_ = c.update(state, base)
-	state.Raw.RPM = 4200 // 60%, below 65% off hysteresis
+	state.Raw.RPM = 2800 // 40%, below 45% off hysteresis
 	if got := c.update(state, base.Add(100*time.Millisecond)); got == ([3]byte{}) {
 		t.Fatal("LED turned off before hold elapsed")
 	}
@@ -937,16 +988,13 @@ func TestSharedBodyPanIsExactLeftRightMirror(t *testing.T) {
 	}
 }
 
-func TestBluetoothRuntimeNeverRetriggersLightbarSetup(t *testing.T) {
-	state := buildBluetoothSetStateData63(telemetry{Active: true}, [3]byte{64, 32, 0})
-	if state[38] != 0 {
-		t.Fatalf("runtime valid_flag2=%02x; setup/compatible-vibration2 must be clear", state[38])
+func TestBluetoothRuntimeNeverOwnsLightbar(t *testing.T) {
+	state := buildBluetoothSetStateData63(telemetry{Active: true})
+	if state[1] != 0 || state[38] != 0 || state[41] != 0 {
+		t.Fatalf("runtime state validates LED-adjacent fields: valid1=%02x valid2=%02x setup=%02x", state[1], state[38], state[41])
 	}
-	if state[41] != 0 {
-		t.Fatalf("runtime lightbar_setup=%02x; setup must not repeat", state[41])
-	}
-	if state[1]&0x04 == 0 {
-		t.Fatalf("runtime RGB control bit missing in valid_flag1=%02x", state[1])
+	if state[44] != 0 || state[45] != 0 || state[46] != 0 {
+		t.Fatalf("runtime state carries RGB: %02x%02x%02x", state[44], state[45], state[46])
 	}
 }
 
@@ -1062,7 +1110,7 @@ func TestBluetooth36PreservesStereoByteOrder(t *testing.T) {
 		samples[i*2] = 60
 		samples[i*2+1] = -20
 	}
-	r := buildBluetoothAllInOneReport36(1, 2, samples, buildBluetoothSetStateData63(telemetry{}, [3]byte{}))
+	r := buildBluetoothAllInOneReport36(1, 2, samples, buildBluetoothSetStateData63(telemetry{}))
 	for i := 0; i < 32; i++ {
 		if int8(r[78+i*2]) != 60 || int8(r[79+i*2]) != -20 {
 			t.Fatalf("stereo byte order changed at frame %d: %d/%d", i, int8(r[78+i*2]), int8(r[79+i*2]))
@@ -1078,7 +1126,7 @@ func TestBluetoothMenuFramesForceStableBlackLED(t *testing.T) {
 		if rgb != ([3]byte{}) || c.isBlinking() {
 			t.Fatalf("menu LED changed at frame %d rgb=%v blink=%t", i, rgb, c.isBlinking())
 		}
-		state := buildBluetoothSetStateData63(telemetry{Active: false}, rgb)
+		state := buildBluetoothSetStateData63(telemetry{Active: false})
 		if state[38] != 0 || state[41] != 0 || state[44] != 0 || state[45] != 0 || state[46] != 0 {
 			t.Fatalf("menu 0x36 state can retrigger LED frame=%d flags=%02x setup=%02x rgb=%02x%02x%02x", i, state[38], state[41], state[44], state[45], state[46])
 		}
@@ -1104,116 +1152,8 @@ func TestBumpOppositeMergeWindowIsShort(t *testing.T) {
 	}
 }
 
-func TestBluetoothLightbarOwnershipIsEventDrivenWithoutSetupRetrigger(t *testing.T) {
-	tel := telemetry{Version: 40, Active: true}
-	steady := buildBluetoothSetStateData63WithFlags(tel, [3]byte{10, 20, 30}, false, false)
-	changed := buildBluetoothSetStateData63WithFlags(tel, [3]byte{10, 20, 30}, true, false)
-	if steady[1]&0x04 != 0 || changed[1]&0x04 == 0 {
-		t.Fatalf("lightbar validation not event-driven: %02x/%02x", steady[1], changed[1])
-	}
-	if steady[38] != 0 || steady[41] != 0 {
-		t.Fatal("runtime retriggers lightbar setup")
-	}
-	release := buildBluetoothSetStateData63WithFlags(tel, [3]byte{}, false, true)
-	if release[1] != 0x88 || release[38] != 0 || release[41] != 0 {
-		t.Fatalf("one-shot RELEASE_LEDS must not combine LIGHT_OUT: flags=%02x valid3=%02x setup=%02x", release[1], release[38], release[41])
-	}
-}
-
-func TestBluetoothLightbarUpdateCadenceIsCoalesced(t *testing.T) {
-	now := time.Unix(15000, 0)
-	last := [3]byte{10, 20, 30}
-	if bluetoothLightbarUpdateDue(true, last, last, now.Add(-time.Second), now, false) {
-		t.Fatal("identical RGB requested another lightbar write")
-	}
-	changed := [3]byte{40, 20, 30}
-	if bluetoothLightbarUpdateDue(true, last, changed, now.Add(-40*time.Millisecond), now, false) {
-		t.Fatal("steady RPM lightbar update bypassed 120 ms coalescing")
-	}
-	if !bluetoothLightbarUpdateDue(true, last, changed, now.Add(-130*time.Millisecond), now, false) {
-		t.Fatal("meaningful steady RGB change was not eventually sent")
-	}
-	if bluetoothLightbarUpdateDue(true, last, changed, now.Add(-30*time.Millisecond), now, true) {
-		t.Fatal("limiter blink exceeded 20 Hz transport cap")
-	}
-	if !bluetoothLightbarUpdateDue(true, last, changed, now.Add(-60*time.Millisecond), now, true) {
-		t.Fatal("limiter blink update was over-coalesced")
-	}
-}
-
-func TestBluetoothSteadyLightbarDoesNotValidateEveryHapticFrame(t *testing.T) {
-	tel := telemetry{Version: protocolVersion, Active: true}
-	rgb := [3]byte{80, 120, 0}
-	if buildBluetoothSetStateData63WithFlags(tel, rgb, false, false)[1]&0x04 != 0 {
-		t.Fatal("steady lightbar validated")
-	}
-	if buildBluetoothSetStateData63WithFlags(tel, rgb, true, false)[1]&0x04 == 0 {
-		t.Fatal("changed lightbar not validated")
-	}
-	release := buildBluetoothSetStateData63WithFlags(tel, [3]byte{}, false, true)
-	if release[1] != 0x88 || release[38] != 0 || release[41] != 0 {
-		t.Fatal("release packet unexpectedly enables lightbar setup")
-	}
-}
-
-func TestBluetoothSteadySetStateDoesNotOwnLEDAdjacentState(t *testing.T) {
-	state := buildBluetoothSetStateData63WithFlags(telemetry{Version: protocolVersion, Active: true}, [3]byte{20, 40, 60}, false, false)
-	if state[1] != 0x80 {
-		t.Fatalf("steady valid_flag1=%02x want 80 (audio_control2 only)", state[1])
-	}
-	const forbidden = byte(0x01 | 0x02 | 0x04 | 0x08 | 0x10)
-	if state[1]&forbidden != 0 {
-		t.Fatalf("steady frame revalidates LED/power/player state: %02x", state[1])
-	}
-}
-
-func TestBumpCenterEchoSuppressed(t *testing.T) {
-	m := newHapticMixerAtRate(3000)
-	now := time.Unix(9000, 0)
-	left := telemetry{BodyKind: "wheel", BodyProfile: "suspension_bump", BodySide: -1, BodyLeftStrength: .68, BodyStrength: .68}
-	if m.suppressBumpEcho(left, now) {
-		t.Fatal("first suppressed")
-	}
-	center := telemetry{BodyKind: "wheel", BodyProfile: "suspension_bump", BodySide: 0, BodyLeftStrength: .68, BodyRightStrength: .68, BodyStrength: .68}
-	if !m.suppressBumpEcho(center, now.Add(105*time.Millisecond)) {
-		t.Fatal("center echo passed")
-	}
-}
-
-func TestBumpOppositeEchoFilter(t *testing.T) {
-	m := newHapticMixerAtRate(3000)
-	now := time.Unix(9100, 0)
-	left := telemetry{
-		BodyKind: "wheel", BodyProfile: "suspension_bump", BodySide: -1, BodyLeftStrength: .68, BodyStrength: .68,
-		Raw: &rawTelemetry{CandidateL: .72, CandidateR: .04, PeakImpulseL: .78, PeakImpulseR: .03},
-	}
-	if m.suppressBumpEcho(left, now) {
-		t.Fatal("first left bump suppressed")
-	}
-
-	// Body amplitude alone is not side evidence. A centered/road-texture echo that
-	// happens to be labelled right must stay suppressed inside the cluster.
-	echo := telemetry{
-		BodyKind: "wheel", BodyProfile: "suspension_bump", BodySide: 1, BodyRightStrength: .95, BodyStrength: .95,
-		Raw: &rawTelemetry{CandidateL: 0, CandidateR: 0, PeakImpulseL: 0, PeakImpulseR: 0},
-	}
-	if !m.suppressBumpEcho(echo, now.Add(40*time.Millisecond)) {
-		t.Fatal("opposite echo without wheel evidence passed")
-	}
-
-	// A genuine opposite-wheel hit is allowed only when that wheel has clearly
-	// stronger transient candidate/impulse evidence of its own.
-	genuineRight := telemetry{
-		BodyKind: "wheel", BodyProfile: "suspension_bump", BodySide: 1, BodyRightStrength: .80, BodyStrength: .80,
-		Raw: &rawTelemetry{CandidateL: .08, CandidateR: .70, PeakImpulseL: .09, PeakImpulseR: .76},
-	}
-	if m.suppressBumpEcho(genuineRight, now.Add(80*time.Millisecond)) {
-		t.Fatal("genuine opposite-wheel transient suppressed")
-	}
-}
-
 func TestBluetoothSetStateDoesNotRequestHapticPowerSave(t *testing.T) {
-	state := buildBluetoothSetStateData63WithFlags(telemetry{Version: protocolVersion, Active: true}, [3]byte{20, 40, 60}, false, false)
+	state := buildBluetoothSetStateData63(telemetry{Version: protocolVersion, Active: true})
 	if state[9] != 0 {
 		t.Fatalf("power-save byte must stay clear during haptics, got %02x", state[9])
 	}
@@ -1288,16 +1228,27 @@ func TestSuspensionBumpClearsPriorIsolation(t *testing.T) {
 	}
 }
 
-func TestExternalRGBStateOwnsNoSecondaryLEDFlags(t *testing.T) {
-	state := buildBluetoothSetStateData63ExternalRGB(telemetry{Active: true})
+func TestBluetoothRuntimeStateOwnsNoSecondaryLEDFlags(t *testing.T) {
+	state := buildBluetoothSetStateData63(telemetry{Active: true})
 	if len(state) != 63 {
-		t.Fatalf("external RGB state len = %d", len(state))
+		t.Fatalf("runtime state len = %d", len(state))
 	}
 	if state[1] != 0 {
-		t.Fatalf("external RGB valid_flag1 must be zero, got 0x%02x", state[1])
+		t.Fatalf("runtime valid_flag1 must be zero, got 0x%02x", state[1])
 	}
 	if state[44] != 0 || state[45] != 0 || state[46] != 0 {
-		t.Fatalf("external RGB payload must not carry stale RGB: %v", state[44:47])
+		t.Fatalf("runtime state must not carry stale RGB: %v", state[44:47])
+	}
+}
+
+func TestUSBTriggerStateOwnsNoLEDFields(t *testing.T) {
+	common := make([]byte, 47)
+	fillUSBTriggerStateCommon(common, telemetry{Version: protocolVersion, Active: true})
+	if common[0] != 0x0C || common[1] != 0 {
+		t.Fatalf("USB trigger flags=%02X/%02X want 0C/00", common[0], common[1])
+	}
+	if common[44] != 0 || common[45] != 0 || common[46] != 0 {
+		t.Fatalf("USB trigger state carries RGB: %02X%02X%02X", common[44], common[45], common[46])
 	}
 }
 
@@ -1408,5 +1359,615 @@ func TestSafeImpactSignaturesKeepSeverityEnergyOrdering(t *testing.T) {
 		if heavy <= light*1.10 {
 			t.Fatalf("%s heavy impact lost energy ordering: light=%.4f heavy=%.4f", c.profile, light, heavy)
 		}
+	}
+}
+
+func TestCanonicalForce48MapsToFinalHIDModes(t *testing.T) {
+	// Fine Feedback consumes the canonical force level directly.
+	fine := make([]byte, 11)
+	fillFineFeedbackEffect(fine, fineTrigger(0.25, force48FromLevel(1).Float64()))
+	if fine[0] != 0x01 || fine[2] != 1 {
+		t.Fatalf("fine force48 level 1 did not reach HID unchanged: %v", fine[:3])
+	}
+	fillFineFeedbackEffect(fine, fineTrigger(0.25, force48FromLevel(48).Float64()))
+	if fine[2] != 48 {
+		t.Fatalf("fine force48 max did not reach HID unchanged: %d", fine[2])
+	}
+
+	// Official Feedback has only eight physical force levels. The reduction from
+	// the common 48-level force occurs here, at the HID boundary, and nowhere in
+	// gameplay/settings code.
+	checks := []struct {
+		force48 int
+		want8   int
+	}{{1, 1}, {6, 1}, {12, 2}, {24, 4}, {36, 6}, {48, 8}}
+	for _, tc := range checks {
+		if got := force48FromLevel(tc.force48).officialStep(); got != tc.want8 {
+			t.Fatalf("force48=%d -> official=%d want %d", tc.force48, got, tc.want8)
+		}
+	}
+
+	buf := make([]byte, 11)
+	fillOfficialResistance(buf, resistanceTrigger(0, force48FromLevel(6).Float64(), force48FromLevel(24).Float64()))
+	if buf[0] != 0x21 {
+		t.Fatalf("unexpected feedback mode %02x", buf[0])
+	}
+	packed := uint32(buf[3]) | uint32(buf[4])<<8 | uint32(buf[5])<<16 | uint32(buf[6])<<24
+	zone0 := int(packed&7) + 1
+	zone9 := int((packed>>(3*9))&7) + 1
+	if zone0 != 1 || zone9 != 4 {
+		t.Fatalf("force48 gradient quantized incorrectly: start=%d end=%d", zone0, zone9)
+	}
+}
+
+func TestProtocol41NormalizedTriggersQuantizeOnceToForce48(t *testing.T) {
+	packet := []byte(`{"v":41,"active":true,"l2Effect":{"kind":"resistance","startPosition":0.1,"startForce":0.13,"endForce":0.5,"amplitude":0,"frequencyHz":0},"r2Effect":{"kind":"fine","startPosition":0.2,"startForce":0.020833333333333332,"endForce":0.020833333333333332,"amplitude":0,"frequencyHz":0}}`)
+	got, ok := decodeTelemetry(packet)
+	if !ok {
+		t.Fatal("protocol 41 normalized trigger packet was rejected")
+	}
+	pair := triggerPairFromTelemetry(got)
+	if pair.L2.StartForce.Level() != 6 || pair.L2.EndForce.Level() != 24 {
+		t.Fatalf("v41 L2 force48 mismatch: %+v", pair.L2)
+	}
+	if pair.R2.StartForce.Level() != 1 {
+		t.Fatalf("v41 fine force should quantize to 1/48, got %d/48", pair.R2.StartForce.Level())
+	}
+}
+
+func TestProtocol41NeverFallsBackToLegacyTriggerIntegers(t *testing.T) {
+	packet := []byte(`{"v":41,"active":true,"l2Mode":1,"l2StartStrength":8,"l2EndStrength":8,"r2Mode":3,"r2StartStrength":48}`)
+	got, ok := decodeTelemetry(packet)
+	if !ok {
+		t.Fatal("protocol 41 packet was rejected")
+	}
+	pair := triggerPairFromTelemetry(got)
+	if pair.L2.Kind != triggerOff || pair.R2.Kind != triggerOff {
+		t.Fatalf("v41 leaked historical trigger fields into runtime: %+v", pair)
+	}
+}
+
+func TestDecodeTelemetrySchema11UsesForce48Directly(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	packet := []byte(`{"v":41,"active":true,"userSettings":{"schema":11,"triggerForceScale":48,"masterEnabled":true,"masterStrength":255,"surfaceEnabled":true,"surfaceStrength":255,"impactEnabled":true,"impactStrength":255,"l2BrakeEnabled":true,"l2BrakeStartStrength":6,"l2BrakeEndStrength":24,"absEnabled":true,"absStrength":36,"r2ThrottleEnabled":true,"r2ThrottleStartStrength":6,"r2ThrottleEndStrength":6,"r2EffectsEnabled":true,"r2EffectsStrength":12,"lightingEnabled":true,"lightingBrightness":219}}`)
+	if _, ok := decodeTelemetry(packet); !ok {
+		t.Fatal("schema11 protocol41 telemetry rejected")
+	}
+	s := currentUserSettings()
+	if s.AdaptiveTriggers.L2BrakeStartStrength != 6 || s.AdaptiveTriggers.L2BrakeEndStrength != 24 ||
+		s.AdaptiveTriggers.ABSStrength != 36 || s.AdaptiveTriggers.R2ThrottleStartStrength != 6 ||
+		s.AdaptiveTriggers.R2ThrottleEndStrength != 6 || s.AdaptiveTriggers.R2EffectsStrength != 12 {
+		t.Fatalf("schema11 force48 settings changed in transit: %+v", s.AdaptiveTriggers)
+	}
+}
+
+func TestLegacyTelemetryNormalizesAtTriggerAdapter(t *testing.T) {
+	packet := []byte(`{"v":40,"active":true,"l2Mode":1,"l2StartStrength":1,"l2EndStrength":4,"r2Mode":2,"r2Amplitude":2,"raw":{"engineRunning":true}}`)
+	got, ok := decodeTelemetry(packet)
+	if !ok {
+		t.Fatal("legacy telemetry packet was rejected")
+	}
+	pair := triggerPairFromTelemetry(got)
+	if math.Abs(pair.L2.StartForce.Float64()-1.0/8.0) > 1e-9 ||
+		math.Abs(pair.L2.EndForce.Float64()-4.0/8.0) > 1e-9 ||
+		math.Abs(pair.R2.Amplitude.Float64()-2.0/8.0) > 1e-9 {
+		t.Fatalf("legacy trigger adapter mismatch: %+v", pair)
+	}
+}
+
+func TestUSBPCMQueueReportsOnlyRealQueuedFrames(t *testing.T) {
+	var q sharedPCMQueue
+	samples := make([]int8, 512*2)
+	for i := range samples {
+		samples[i] = 12
+	}
+	q.pushAtRate(samples, 48000)
+	if got := q.availableOutputFrames(48000); got != 512 {
+		t.Fatalf("queued output frames=%d want 512", got)
+	}
+	left, right := q.render(512, 48000)
+	if len(left) != 512 || len(right) != 512 || q.availableOutputFrames(48000) != 0 {
+		t.Fatalf("queue did not consume exactly the available PCM")
+	}
+}
+
+func TestDecodeTelemetrySchema10TriggerRanges(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	packet := []byte(`{"v":40,"active":true,"userSettings":{"schema":10,"masterEnabled":true,"masterStrength":255,"surfaceEnabled":true,"surfaceStrength":255,"impactEnabled":true,"impactStrength":255,"l2BrakeEnabled":true,"l2BrakeStartStrength":40,"l2BrakeEndStrength":150,"absEnabled":true,"absStrength":192,"r2ThrottleEnabled":true,"r2ThrottleStartStrength":30,"r2ThrottleEndStrength":120,"r2EffectsEnabled":true,"r2EffectsStrength":64,"lightingEnabled":true,"lightingBrightness":219}}`)
+	if _, ok := decodeTelemetry(packet); !ok {
+		t.Fatal("schema10 telemetry rejected")
+	}
+	s := currentUserSettings()
+	if s.AdaptiveTriggers.L2BrakeStartStrength != 8 || s.AdaptiveTriggers.L2BrakeEndStrength != 28 {
+		t.Fatalf("schema10 L2 range lost: %+v", s.AdaptiveTriggers)
+	}
+	if s.AdaptiveTriggers.R2ThrottleStartStrength != 6 || s.AdaptiveTriggers.R2ThrottleEndStrength != 23 {
+		t.Fatalf("schema10 R2 range lost: %+v", s.AdaptiveTriggers)
+	}
+}
+
+func TestDecodeTelemetryAppliesBeamNGUserSettings(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+
+	packet := []byte(`{"v":40,"active":true,"userSettings":{"schema":8,"masterEnabled":true,"masterStrength":255,"surfaceEnabled":false,"surfaceStrength":255,"impactEnabled":true,"impactStrength":123,"surfaceRollingStrengths":{"asphalt":74,"gravel":255},"surfaceSlipStrengths":{"asphalt":255,"gravel":255},"l2BrakeEnabled":true,"l2BrakeStrength":96,"absEnabled":true,"absStrength":211,"r2ThrottleEnabled":false,"r2ThrottleStrength":27,"r2EffectsEnabled":true,"r2EffectsStrength":64,"lightingEnabled":false,"lightingBrightness":219}}`)
+	decoded, ok := decodeTelemetry(packet)
+	if !ok {
+		t.Fatal("telemetry packet with BeamNG user settings was rejected")
+	}
+	if decoded.UserSettings == nil {
+		t.Fatal("BeamNG user settings were not decoded")
+	}
+
+	got := currentUserSettings()
+	if !got.Haptics.MasterEnabled || got.Haptics.MasterStrength != 255 ||
+		got.Haptics.SurfaceEnabled || got.Haptics.SurfaceStrength != 255 ||
+		!got.Haptics.ImpactEnabled || got.Haptics.ImpactStrength != 123 ||
+		math.Abs(surfaceRollingGain(got, "asphalt")-1.0) > 0.05 || math.Abs(surfaceRollingGain(got, "gravel")-1.0) > 0.05 ||
+		math.Abs(surfaceSlipGain(got, "asphalt")-1.0) > 0.20 || math.Abs(surfaceSlipGain(got, "gravel")-1.0) > 0.40 ||
+		!got.AdaptiveTriggers.L2BrakeEnabled || got.AdaptiveTriggers.L2BrakeEndStrength != 18 || got.AdaptiveTriggers.L2BrakeStartStrength != 5 ||
+		!got.AdaptiveTriggers.ABSEnabled || got.AdaptiveTriggers.ABSStrength != 40 ||
+		got.AdaptiveTriggers.R2ThrottleEnabled || got.AdaptiveTriggers.R2ThrottleStartStrength != 5 || got.AdaptiveTriggers.R2ThrottleEndStrength != 5 ||
+		!got.AdaptiveTriggers.R2EffectsEnabled || got.AdaptiveTriggers.R2EffectsStrength != 12 ||
+		got.Lighting.Enabled || got.Lighting.Brightness != 219 {
+		t.Fatalf("BeamNG schema8 settings were not applied: %+v", got)
+	}
+}
+
+func TestDecodeTelemetryLegacyPercentSettingsStillMigrate(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	packet := []byte(`{"v":40,"active":true,"userSettings":{"masterPercent":85,"surfacePercent":0,"impactPercent":125,"l2BrakePercent":80,"absPercent":140,"r2ThrottlePercent":65,"r2EffectsPercent":110}}`)
+	if _, ok := decodeTelemetry(packet); !ok {
+		t.Fatal("legacy percentage settings packet was rejected")
+	}
+	got := currentUserSettings()
+	if !got.Haptics.MasterEnabled || hapticMasterGain(true, got.Haptics.MasterStrength) < 0.83 || hapticMasterGain(true, got.Haptics.MasterStrength) > 0.87 {
+		t.Fatalf("legacy master migration mismatch: %+v gain=%f", got.Haptics, hapticMasterGain(true, got.Haptics.MasterStrength))
+	}
+	if got.Haptics.SurfaceEnabled {
+		t.Fatal("legacy 0% surface setting must migrate to disabled")
+	}
+	if got.AdaptiveTriggers.L2BrakeEndStrength != 19 || got.AdaptiveTriggers.L2BrakeStartStrength != 5 || got.AdaptiveTriggers.ABSStrength != 48 {
+		t.Fatalf("legacy trigger migration mismatch: %+v", got.AdaptiveTriggers)
+	}
+}
+
+func TestDecodeTelemetryWithoutBeamNGSettingsKeepsCurrentPreferences(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	setUserSettingValue(0, 73)
+	setUserSettingEnabled(1, false)
+	if _, ok := decodeTelemetry([]byte(`{"v":40,"active":true}`)); !ok {
+		t.Fatal("legacy telemetry packet was rejected")
+	}
+	got := currentUserSettings()
+	if got.Haptics.MasterStrength != 73 || got.Haptics.SurfaceEnabled {
+		t.Fatalf("legacy telemetry unexpectedly replaced local settings: %+v", got.Haptics)
+	}
+}
+
+func TestHapticMasterIsTrueAttenuationScale(t *testing.T) {
+	ref := percentToStrength255(hapticReferencePercent)
+	if got := hapticMasterGain(true, ref); math.Abs(got-1.0) > 0.0001 {
+		t.Fatalf("calibrated %g%% gain=%f want 1", hapticReferencePercent, got)
+	}
+	if got := hapticMasterGain(true, percentToStrength255(50)); got < 0.49 || got > 0.51 {
+		t.Fatalf("50%% gain=%f want 0.5", got)
+	}
+	if got := hapticMasterGain(false, 255); got != 0 {
+		t.Fatalf("disabled gain=%f want 0", got)
+	}
+}
+
+func TestR2DynamicEffectsDisabledSettlesToBaseResistance(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	userSettingsState.mu.Lock()
+	settings := userSettingsState.data
+	settings.AdaptiveTriggers.R2EffectsEnabled = false
+	settings.AdaptiveTriggers.R2ThrottleEnabled = true
+	settings.AdaptiveTriggers.R2ThrottleStrength = 6
+	userSettingsState.data = settings
+	userSettingsState.mu.Unlock()
+
+	cmd := telemetry{Active: true, R2Mode: 2, R2Amplitude: 8, R2Hz: 24, Raw: &rawTelemetry{EngineRunning: true, RevLimiter: true, Throttle: 1}}
+	got, _, _, _, _ := applyAdaptiveThrottleTrigger(cmd, time.Now(), &adaptiveThrottleTriggerState{}, false)
+	got = applyUserTriggerPreferences(got, false)
+	if got.R2Mode != 1 || got.R2StartStrength != 6 || got.R2EndStrength != 6 || got.R2Amplitude != 0 || got.R2Hz != 0 {
+		t.Fatalf("dynamic-off R2 = mode%d strength=%d/%d amp=%d hz=%d; want constant mode1 6/6", got.R2Mode, got.R2StartStrength, got.R2EndStrength, got.R2Amplitude, got.R2Hz)
+	}
+}
+
+func TestSurfaceDefaultsPreserveCalibratedEngine(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	s := currentUserSettings()
+	if math.Abs(surfaceMasterGain(s)-1.0) > 0.001 {
+		t.Fatalf("surface master gain=%f want 1 at calibrated %g%%", surfaceMasterGain(s), surfaceMasterReferencePercent)
+	}
+	for _, profile := range knownSurfaceProfiles {
+		if math.Abs(surfaceRollingGain(s, profile)-1.0) > 0.001 {
+			t.Fatalf("%s rolling gain=%f want 1 at its calibrated peak reference", profile, surfaceRollingGain(s, profile))
+		}
+		if math.Abs(surfaceSlipGain(s, profile)-1.0) > 0.001 {
+			t.Fatalf("%s slip gain=%f want 1 at calibrated relative contribution", profile, surfaceSlipGain(s, profile))
+		}
+	}
+}
+
+func TestSurfaceRollingAndSlipAreIndependent(t *testing.T) {
+	profile := "gravel"
+	roughness, speed := 1.0, 15.0
+	rollingExcitation, legacyExcitation, slip := 0.10, 0.24, 1.0
+	rollingRaw, slipRaw := splitSurfaceRawComponents(profile, roughness, speed, rollingExcitation, legacyExcitation, slip)
+	legacyRolling, legacySlip := surfaceStrengthComponents(profile, roughness, speed, legacyExcitation, slip)
+	if rollingRaw <= 0 || slipRaw <= 0 {
+		t.Fatalf("expected independent gravel components, rolling=%f slip=%f", rollingRaw, slipRaw)
+	}
+	if math.Abs((rollingRaw+slipRaw)-(legacyRolling+legacySlip)) > 0.000001 {
+		t.Fatalf("split changed calibrated raw total: split=%f legacy=%f", rollingRaw+slipRaw, legacyRolling+legacySlip)
+	}
+
+	// Changing the rolling-only excitation must not alter the dedicated slip input.
+	rollingRaw2, slipRaw2 := splitSurfaceRawComponents(profile, roughness, speed, 0.20, legacyExcitation, slip)
+	if math.Abs(rollingRaw2-rollingRaw) < 0.0001 {
+		t.Fatal("rolling-only excitation did not change the rolling component")
+	}
+	if slipRaw2 >= slipRaw {
+		// Increasing rolling can legitimately absorb part of the old slip-leakage
+		// delta, but it must never create additional Slip power.
+		t.Fatalf("rolling excitation unexpectedly increased slip component: %f -> %f", slipRaw, slipRaw2)
+	}
+}
+
+func TestSurfaceSplitPreservesCalibratedAudibleTotal(t *testing.T) {
+	profiles := []string{"asphalt", "asphalt_wet", "dirt", "gravel", "snow", "rock", "rumble_strip"}
+	for _, profile := range profiles {
+		rollingRaw, slipRaw := splitSurfaceRawComponents(profile, .55, 18, .12, .24, .8)
+		rolling, slip, _ := splitCalibratedSurfaceStrength(profile, rollingRaw, slipRaw, .35, .60)
+		legacyRolling, legacySlip := surfaceStrengthComponents(profile, .55, 18, .24, .8)
+		legacyBase := tactileSurfaceStrength(profile, math.Min(.44, legacyRolling+legacySlip))
+		legacyTotal := audibleSurfaceStrength(profile, legacyBase, .35, .60)
+		if math.Abs((rolling+slip)-legacyTotal) > 0.000001 {
+			t.Fatalf("%s split changed stock audible total: split=%f legacy=%f", profile, rolling+slip, legacyTotal)
+		}
+	}
+}
+
+func TestSurfaceAbsolutePowerControlsHaveRealHeadroom(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	s := currentUserSettings()
+	profile := "asphalt"
+	if got := surfaceRollingGain(s, profile); math.Abs(got-1) > .001 {
+		t.Fatalf("default asphalt gain=%f want 1", got)
+	}
+	ref := referenceFor(profile, surfaceRollingReferencePercent, 100)
+	if math.Abs(ref-10) > .001 {
+		t.Fatalf("asphalt displayed calibrated power=%f want 10", ref)
+	}
+	s.Haptics.SurfaceRollingStrengths[profile] = 255
+	maxGain := surfaceRollingGain(s, profile)
+	if maxGain < 11.5 {
+		t.Fatalf("asphalt 100%% gain=%f does not expose enough full-power headroom", maxGain)
+	}
+
+	rollingRaw, slipRaw := splitSurfaceRawComponents(profile, 1, 32, 1, 1, 0)
+	rollingStock, _, rollingBase := splitCalibratedSurfaceStrength(profile, rollingRaw, slipRaw, 0, 0)
+	if got := applyBoostOnlyAsphaltBed(profile, rollingStock, rollingBase, 1); got != 0 {
+		t.Fatalf("stock smooth asphalt unexpectedly gained a continuous bed: %f", got)
+	}
+	boostedBed := applyBoostOnlyAsphaltBed(profile, rollingStock, rollingBase, maxGain)
+	if boostedBed <= .10 {
+		t.Fatalf("boosted smooth asphalt still has no useful rolling response: %f", boostedBed)
+	}
+}
+
+func TestSlipAbsoluteControlHasLargeUpwardRange(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	s := currentUserSettings()
+	for _, profile := range []string{"asphalt", "gravel", "snow"} {
+		stock := surfaceSlipGain(s, profile)
+		if math.Abs(stock-1) > .01 {
+			t.Fatalf("%s stock slip gain=%f want 1", profile, stock)
+		}
+		s.Haptics.SurfaceSlipStrengths[profile] = 255
+		maximum := surfaceSlipGain(s, profile)
+		if maximum < 25 {
+			t.Fatalf("%s 100%% slip gain=%f should expose obvious headroom", profile, maximum)
+		}
+	}
+}
+
+func TestSchema9AsphaltSliderReallyChangesRuntimeGain(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	ref := percentToStrength255(surfaceRollingReferencePercent["asphalt"])
+	slipRef := percentToStrength255(surfaceSlipReferencePercent["asphalt"])
+	packetRef := []byte(fmt.Sprintf(`{"v":40,"active":true,"userSettings":{"schema":9,"masterEnabled":true,"masterStrength":255,"surfaceEnabled":true,"surfaceStrength":255,"impactEnabled":true,"impactStrength":255,"surfaceRollingStrengths":{"asphalt":%d},"surfaceSlipStrengths":{"asphalt":%d},"l2BrakeEnabled":true,"l2BrakeStrength":128,"absEnabled":true,"absStrength":192,"r2ThrottleEnabled":true,"r2ThrottleStrength":32,"r2EffectsEnabled":true,"r2EffectsStrength":64,"lightingEnabled":true,"lightingBrightness":219}}`, ref, slipRef))
+	if _, ok := decodeTelemetry(packetRef); !ok {
+		t.Fatal("schema9 calibrated asphalt packet rejected")
+	}
+	calibrated := surfaceRollingGain(currentUserSettings(), "asphalt")
+	packetMax := []byte(`{"v":40,"active":true,"userSettings":{"schema":9,"masterEnabled":true,"masterStrength":255,"surfaceEnabled":true,"surfaceStrength":255,"impactEnabled":true,"impactStrength":255,"surfaceRollingStrengths":{"asphalt":255},"surfaceSlipStrengths":{"asphalt":255},"l2BrakeEnabled":true,"l2BrakeStrength":128,"absEnabled":true,"absStrength":192,"r2ThrottleEnabled":true,"r2ThrottleStrength":32,"r2EffectsEnabled":true,"r2EffectsStrength":64,"lightingEnabled":true,"lightingBrightness":219}}`)
+	if _, ok := decodeTelemetry(packetMax); !ok {
+		t.Fatal("schema9 max asphalt packet rejected")
+	}
+	maximum := surfaceRollingGain(currentUserSettings(), "asphalt")
+	if calibrated < .98 || calibrated > 1.02 || maximum < 11.5 {
+		t.Fatalf("asphalt slider did not alter runtime gain: calibrated=%f max=%f", calibrated, maximum)
+	}
+}
+
+func TestSchema8SurfaceSettingsMigrateWithoutChangingFeel(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	old := defaultUserSettings()
+	old.Schema = 8
+	old.Haptics.SurfaceStrength = 255
+	old.Haptics.SurfaceRollingStrengths = map[string]int{"asphalt": percentToStrength255(29)}
+	old.Haptics.SurfaceSlipStrengths = map[string]int{"asphalt": 255}
+	migrated := migrateSchema8UserSettings(old)
+	if got := surfaceMasterGain(migrated); math.Abs(got-1) > .01 {
+		t.Fatalf("schema8 surface master migrated gain=%f want 1", got)
+	}
+	if got := surfaceRollingGain(migrated, "asphalt"); math.Abs(got-1) > .05 {
+		t.Fatalf("schema8 asphalt migrated gain=%f want ~1", got)
+	}
+	if got := surfaceSlipGain(migrated, "asphalt"); math.Abs(got-1) > .20 {
+		t.Fatalf("schema8 asphalt slip migrated gain=%f want ~1", got)
+	}
+}
+
+func measureSurfacePowerForTest(profile string, material int, roughness float64, rollingPercent, slipPercent float64, slip bool) float64 {
+	resetUserSettings()
+	settings := currentUserSettings()
+	settings.Haptics.SurfaceRollingStrengths[profile] = percentToStrength255(rollingPercent)
+	settings.Haptics.SurfaceSlipStrengths[profile] = percentToStrength255(slipPercent)
+	userSettingsState.mu.Lock()
+	userSettingsState.data = settings
+	userSettingsState.mu.Unlock()
+
+	m := newCanonicalHapticMixer()
+	base := time.Unix(64000, 0)
+	legacyExcitation := 1.0
+	rollingExcitation := 1.0
+	roadSlip := 0.0
+	if slip {
+		rollingExcitation = .10
+		legacyExcitation = .24
+		roadSlip = 1
+	}
+	state := telemetry{Version: protocolVersion, Active: true, Raw: &rawTelemetry{
+		Speed: 32, GroundedWheels: 4,
+		SurfaceMaterialL: material, SurfaceMaterialR: material,
+		SurfaceRoughnessL: roughness, SurfaceRoughnessR: roughness,
+		RoadExcitationL: legacyExcitation, RoadExcitationR: legacyExcitation,
+		RoadRollingExcitationValid: true,
+		RoadRollingExcitationL:     rollingExcitation, RoadRollingExcitationR: rollingExcitation,
+		RoadSlipL: roadSlip, RoadSlipR: roadSlip,
+	}}
+	m.update(state, base)
+	ss, n := 0.0, 0
+	for i := 0; i < 160; i++ {
+		now := base.Add(time.Duration(i) * 10667 * time.Microsecond)
+		m.update(state, now)
+		_, status := m.render(512, now)
+		for _, sample := range status.surfacePCM {
+			v := float64(sample) / 127.0
+			ss += v * v
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return math.Sqrt(ss / float64(n))
+}
+
+func TestEverySurface100PercentHasFullPowerHeadroom(t *testing.T) {
+	defer resetUserSettings()
+	cases := []struct {
+		profile   string
+		material  int
+		roughness float64
+	}{
+		{"asphalt", 10, .03}, {"asphalt_wet", 11, .06}, {"slippery", 12, .045}, {"ice", 21, .04},
+		{"dirt", 15, .30}, {"dusty_dirt", 14, .34}, {"sandy_road", 17, .30}, {"sand", 16, .22},
+		{"mud", 18, .28}, {"gravel", 19, .48}, {"grass", 20, .25}, {"snow", 22, .24},
+		{"rock", 13, .58}, {"cobblestone", 30, .78}, {"rumble_strip", 29, 1.0},
+	}
+	for _, tc := range cases {
+		rollingRMS := measureSurfacePowerForTest(tc.profile, tc.material, tc.roughness, 100, referenceFor(tc.profile, surfaceSlipReferencePercent, 1), false)
+		// The calibration target is the ~0.625 active RMS of a strongest primary
+		// bump. Scheduler windows vary by material, so use a small tolerance while
+		// rejecting the old failure mode where 100% could still be very weak.
+		if rollingRMS < .50 {
+			t.Fatalf("%s 100%% rolling RMS=%f is still far below the full-power reference", tc.profile, rollingRMS)
+		}
+	}
+}
+
+func TestSlip100PercentIsAudibleAndIndependent(t *testing.T) {
+	defer resetUserSettings()
+	for _, tc := range []struct {
+		profile   string
+		material  int
+		roughness float64
+	}{{"asphalt", 10, .03}, {"gravel", 19, .48}, {"snow", 22, .24}} {
+		refRolling := referenceFor(tc.profile, surfaceRollingReferencePercent, 100)
+		refSlip := referenceFor(tc.profile, surfaceSlipReferencePercent, 1)
+		stock := measureSurfacePowerForTest(tc.profile, tc.material, tc.roughness, refRolling, refSlip, true)
+		maxSlip := measureSurfacePowerForTest(tc.profile, tc.material, tc.roughness, refRolling, 100, true)
+		if maxSlip < stock+.12 {
+			t.Fatalf("%s slip slider has too little audible range: stock=%f max=%f", tc.profile, stock, maxSlip)
+		}
+	}
+}
+
+func TestR2DynamicPercentControlsPeakNotBase(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	now := time.Now()
+	cmd := telemetry{Active: true, R2Mode: 2, R2Amplitude: 2, R2Hz: 23, Raw: &rawTelemetry{EngineRunning: true, TCS: true, Throttle: 1}}
+
+	settings := currentUserSettings()
+	settings.AdaptiveTriggers.R2ThrottleStrength = 6
+	settings.AdaptiveTriggers.R2EffectsStrength = percentToTriggerForce48(r2DynamicReferencePercent)
+	userSettingsState.mu.Lock()
+	userSettingsState.data = settings
+	userSettingsState.mu.Unlock()
+	got, _, _, _, _ := applyAdaptiveThrottleTrigger(cmd, now, &adaptiveThrottleTriggerState{}, false)
+	got = applyUserTriggerPreferences(got, false)
+	if got.R2Amplitude != 12 {
+		t.Fatalf("default dynamic peak=%d want 12/48", got.R2Amplitude)
+	}
+
+	settings = currentUserSettings()
+	settings.AdaptiveTriggers.R2EffectsStrength = 48
+	userSettingsState.mu.Lock()
+	userSettingsState.data = settings
+	userSettingsState.mu.Unlock()
+	got, _, _, _, _ = applyAdaptiveThrottleTrigger(cmd, now, &adaptiveThrottleTriggerState{}, false)
+	got = applyUserTriggerPreferences(got, false)
+	if got.R2Amplitude != 48 {
+		t.Fatalf("100%% dynamic peak=%d want 48/48", got.R2Amplitude)
+	}
+
+	base := telemetry{Active: true, R2Mode: 1, Raw: &rawTelemetry{EngineRunning: true, Throttle: 0.5}}
+	got, _, _, _, _ = applyAdaptiveThrottleTrigger(base, now, &adaptiveThrottleTriggerState{}, false)
+	got = applyUserTriggerPreferences(got, false)
+	if got.R2StartStrength != 6 || got.R2EndStrength != 6 {
+		t.Fatalf("dynamic peak setting changed base resistance: %d/%d", got.R2StartStrength, got.R2EndStrength)
+	}
+}
+
+func TestR2DynamicReportBytesChangeWithSlider(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	now := time.Now()
+	cmd := telemetry{Active: true, R2Mode: 2, R2Amplitude: 2, R2Hz: 23, Raw: &rawTelemetry{EngineRunning: true, TCS: true}}
+
+	setPeak := func(percent float64) []byte {
+		s := currentUserSettings()
+		s.AdaptiveTriggers.R2EffectsStrength = percentToTriggerForce48(percent)
+		userSettingsState.mu.Lock()
+		userSettingsState.data = s
+		userSettingsState.mu.Unlock()
+		got, _, _, _, _ := applyAdaptiveThrottleTrigger(cmd, now, &adaptiveThrottleTriggerState{}, false)
+		got = applyUserTriggerPreferences(got, false)
+		buf := make([]byte, 11)
+		fillTrigger(buf, got.R2Mode, got.R2StartZone, got.R2StartStrength, got.R2EndStrength, got.R2Amplitude, got.R2Hz)
+		return buf
+	}
+
+	lowBytes := setPeak(25)
+	highBytes := setPeak(100)
+	if bytes.Equal(lowBytes, highBytes) {
+		t.Fatalf("R2 slider did not change final trigger report: %v", lowBytes)
+	}
+}
+
+func TestR2DynamicStrengthDoesNotScaleFineFeedbackMode(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	settings := currentUserSettings()
+	settings.AdaptiveTriggers.R2EffectsEnabled = true
+	settings.AdaptiveTriggers.R2EffectsStrength = 48
+	userSettingsState.mu.Lock()
+	userSettingsState.data = settings
+	userSettingsState.mu.Unlock()
+	cmd := telemetry{Active: true, R2Mode: 3, R2StartZone: 26, R2StartStrength: 3, R2EndStrength: 3, Raw: &rawTelemetry{EngineRunning: true, Wheelspin: true, DrivenSlip: 4.0}}
+	got := applyUserTriggerPreferences(cmd, false)
+	if got.R2Mode != 3 || got.R2StartStrength != 3 || got.R2EndStrength != 3 {
+		t.Fatalf("fine-feedback mode changed: mode=%d strength=%d/%d", got.R2Mode, got.R2StartStrength, got.R2EndStrength)
+	}
+}
+
+func TestUserLEDSettingsCanDisableAndScale(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	userSettingsState.mu.Lock()
+	s := userSettingsState.data
+	s.Lighting.Enabled = false
+	s.Lighting.Brightness = 255
+	userSettingsState.data = s
+	userSettingsState.mu.Unlock()
+	if got := applyUserLEDSettings([3]byte{220, 110, 55}); got != [3]byte{} {
+		t.Fatalf("disabled LED output=%v want off", got)
+	}
+
+	// 86% is the calibrated 220/255 lightbar ceiling and must preserve it.
+	userSettingsState.mu.Lock()
+	s = userSettingsState.data
+	s.Lighting.Enabled = true
+	s.Lighting.Brightness = percentToStrength255(ledReferencePercent)
+	userSettingsState.data = s
+	userSettingsState.mu.Unlock()
+	if got := applyUserLEDSettings([3]byte{220, 110, 55}); got[0] < 219 || got[0] > 221 {
+		t.Fatalf("calibrated LED reference changed output: %v", got)
+	}
+
+	// 100% exposes the remaining byte-range headroom.
+	userSettingsState.mu.Lock()
+	s = userSettingsState.data
+	s.Lighting.Brightness = 255
+	userSettingsState.data = s
+	userSettingsState.mu.Unlock()
+	got := applyUserLEDSettings([3]byte{220, 110, 55})
+	if got[0] != 255 || got[1] <= 110 {
+		t.Fatalf("100%% LED did not use headroom: %v", got)
+	}
+}
+
+func TestSchema5SettingsMigrateToCalibratedMultipliers(t *testing.T) {
+	resetUserSettings()
+	defer resetUserSettings()
+	packet := []byte(`{"v":40,"active":true,"userSettings":{"schema":6,"masterEnabled":true,"masterStrength":255,"surfaceEnabled":true,"surfaceStrength":255,"impactEnabled":true,"impactStrength":255,"surfaceRollingStrengths":{"asphalt":255,"gravel":128},"surfaceSlipStrengths":{"asphalt":255,"gravel":128},"l2BrakeEnabled":true,"l2BrakeStrength":128,"absEnabled":true,"absStrength":192,"r2ThrottleEnabled":true,"r2ThrottleStrength":32,"r2EffectsEnabled":true,"r2EffectsStrength":64,"lightingEnabled":true,"lightingBrightness":255}}`)
+	if _, ok := decodeTelemetry(packet); !ok {
+		t.Fatal("schema6 packet rejected")
+	}
+	got := currentUserSettings()
+	if math.Abs(hapticMasterGain(true, got.Haptics.MasterStrength)-1.0) > 0.01 {
+		t.Fatalf("schema6 master migration gain=%f want calibrated 1", hapticMasterGain(true, got.Haptics.MasterStrength))
+	}
+	if math.Abs(surfaceMasterGain(got)-1.0) > 0.01 {
+		t.Fatalf("schema6 surface master migration gain=%f want calibrated 1", surfaceMasterGain(got))
+	}
+	if math.Abs(surfaceRollingGain(got, "asphalt")-1.0) > 0.03 {
+		t.Fatalf("asphalt migration gain=%f want ~1", surfaceRollingGain(got, "asphalt"))
+	}
+	if surfaceRollingGain(got, "gravel") < 0.48 || surfaceRollingGain(got, "gravel") > 0.53 {
+		t.Fatalf("gravel migration gain=%f want ~0.5", surfaceRollingGain(got, "gravel"))
+	}
+	if got.Lighting.Brightness != percentToStrength255(ledReferencePercent) {
+		t.Fatalf("schema6 LED 100%% gain should migrate to calibrated %g%%, got %d", ledReferencePercent, got.Lighting.Brightness)
+	}
+}
+
+func TestNormalizedTriggerPayloadOverridesLegacyMirror(t *testing.T) {
+	packet := []byte(`{"v":40,"active":true,"l2Effect":{"kind":"resistance","startPosition":0.2,"startForce":0.17,"endForce":0.61,"amplitude":0,"frequencyHz":0},"l2Mode":1,"l2StartStrength":8,"l2EndStrength":8}`)
+	got, ok := decodeTelemetry(packet)
+	if !ok {
+		t.Fatal("normalized trigger packet was rejected")
+	}
+	pair := triggerPairFromTelemetry(got)
+	if pair.L2.Kind != triggerResistance || math.Abs(pair.L2.StartPosition.Float64()-0.2) > 1e-9 || math.Abs(pair.L2.StartForce.Float64()-force48(0.17).Float64()) > 1e-9 || math.Abs(pair.L2.EndForce.Float64()-force48(0.61).Float64()) > 1e-9 {
+		t.Fatalf("normalized payload was not authoritative: %+v", pair.L2)
+	}
+}
+
+func TestFineFeedbackKeepsWeakNormalizedCommandAtHIDBoundary(t *testing.T) {
+	buf := make([]byte, 11)
+	fillTriggerEffect(buf, fineTrigger(0.37, 0.020833333333333332))
+	if buf[0] != 0x01 {
+		t.Fatalf("fine feedback mode=%02x want 01", buf[0])
+	}
+	if buf[2] != 1 {
+		t.Fatalf("minimum fine feedback command encoded as %d want 1", buf[2])
 	}
 }

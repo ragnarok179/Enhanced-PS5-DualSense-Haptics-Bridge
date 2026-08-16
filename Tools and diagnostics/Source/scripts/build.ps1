@@ -17,8 +17,8 @@ try {
   $env:GOARCH = "amd64"
   $env:CGO_ENABLED = "0"
 
-  go build -trimpath -ldflags "-s -w" -tags bluetooth -o (Join-Path $bridge "EnhancedPS5DualSenseHapticsBluetooth.exe") .
-  go build -trimpath -ldflags "-s -w" -tags usb -o (Join-Path $bridge "EnhancedPS5DualSenseHapticsUSB.exe") .
+  go build -trimpath -buildvcs=false -ldflags "-s -w -buildid=" -tags bluetooth -o (Join-Path $bridge "EnhancedPS5DualSenseHapticsBluetooth.exe") .
+  go build -trimpath -buildvcs=false -ldflags "-s -w -buildid=" -tags usb -o (Join-Path $bridge "EnhancedPS5DualSenseHapticsUSB.exe") .
 
   # One launcher implementation and one build. The executable selects its mode
   # from its own filename, so the second public launcher is an identical copy.

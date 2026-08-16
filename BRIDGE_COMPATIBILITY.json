@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "protocolPolicy": "Protocol numbers are monotonic compatibility generations. Increment only for a breaking wire change and never reuse an older number.",
+  "protocols": [
+    {
+      "id": 40,
+      "status": "legacy-transition",
+      "introduced": "V1.0",
+      "description": "Legacy V1.0 wire generation. Bridge V1.3 consumes real V1.0 packets; BeamNG Mod V1.1 may also emit a marked v40 migration mirror for Bridge V1.2, which V1.3 ignores to prevent duplicate effects."
+    },
+    {
+      "id": 41,
+      "status": "current",
+      "introduced": "V1.1",
+      "description": "Current V1.1 semantic l2Effect/r2Effect protocol with Force48 trigger representation and sparse settings telemetry."
+    }
+  ],
+  "releases": [
+    {
+      "bridgeVersion": "V1.3",
+      "tag": "V1.3",
+      "channel": "stable",
+      "protocols": [
+        40,
+        41
+      ],
+      "asset": "Enhanced_PS5_DualSense_Haptics_Bridge.zip"
+    }
+  ]
+}

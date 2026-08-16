@@ -23,6 +23,11 @@ type sharedFeelEngine struct {
 	shiftTorqueCutUntil time.Time
 	lastShiftEvent      int
 	eventsSynced        bool
+
+	// Reused canonical PCM buffers. Tests can still call hapticMixer.render when
+	// they need independent retained blocks; the live engine is allocation-free.
+	pcmScratch        []int8
+	surfacePCMScratch []int8
 }
 
 func newSharedFeelEngine(m *hapticMixer) *sharedFeelEngine {
@@ -52,14 +57,33 @@ func (e *sharedFeelEngine) step(latest telemetry, lastPacket, now time.Time, fra
 		e.shiftTorqueCutUntil = time.Time{}
 	}
 
+	pair := triggerPairFromTelemetry(control)
 	var absActive bool
 	var absPhase string
-	control, absActive, absPhase, _, _, _, _ = applyABSHybridPulse(control, now, &e.absState)
+	pair, absActive, absPhase, _, _, _, _ = applyABSHybridPulsePair(control, pair, now, &e.absState)
 	shiftCut := !e.shiftTorqueCutUntil.IsZero() && now.Before(e.shiftTorqueCutUntil)
-	control, _, _, _, _ = applyAdaptiveThrottleTrigger(control, now, &e.r2State, shiftCut)
+	pair, _, _, _, _ = applyAdaptiveThrottleTriggerPair(control, pair, now, &e.r2State, shiftCut)
+	pair = applyUserTriggerPreferencesPair(control, pair, absActive)
+	writeTriggerState(&control, pair)
 	e.mixer.setSharedDynamics(absActive && absPhase == "kick")
 
-	rgb := e.led.update(control, now)
-	samples, status := e.mixer.render(frames, now)
+	rgb := applyUserLEDSettings(e.led.update(control, now))
+	required := maxInt(frames, 0) * 2
+	if cap(e.pcmScratch) < required {
+		e.pcmScratch = make([]int8, required)
+	} else {
+		e.pcmScratch = e.pcmScratch[:required]
+	}
+	diagnostics := runtimeDiagnosticsEnabled()
+	var surfaceScratch []int8
+	if diagnostics {
+		if cap(e.surfacePCMScratch) < required {
+			e.surfacePCMScratch = make([]int8, required)
+		} else {
+			e.surfacePCMScratch = e.surfacePCMScratch[:required]
+		}
+		surfaceScratch = e.surfacePCMScratch
+	}
+	samples, status := e.mixer.renderInto(frames, now, e.pcmScratch, surfaceScratch, diagnostics)
 	return sharedFeelFrame{Control: control, RGB: rgb, LEDStatus: e.led.status(), Samples: samples, Status: status}
 }

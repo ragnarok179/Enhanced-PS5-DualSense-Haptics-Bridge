@@ -8,6 +8,11 @@ $Output = Join-Path $RepositoryRoot 'SHA256SUMS.txt'
 # START_BRIDGE.bat exists only so the V1.1 updater can recognize the new layout.
 # It is intentionally not part of the managed installation manifest.
 $LegacyLauncherMarker = Join-Path $RepositoryRoot 'START_BRIDGE.bat'
+$LegacyUpdaterBat = Join-Path $RepositoryRoot 'UPDATE_BRIDGE.bat'
+$LegacyUpdaterPs1 = Join-Path $RepositoryRoot 'Tools and diagnostics\Updater\Update-Bridge.ps1'
+# Runtime user preferences are deliberately unmanaged so updates never overwrite them.
+$UserSettingsFile = Join-Path $RepositoryRoot 'Tools and diagnostics\Config\user_settings.json'
+$PendingCompatibilityFile = Join-Path $RepositoryRoot 'Tools and diagnostics\Config\pending_bridge_compatibility.json'
 
 function Get-RepositorySha256([string]$Path) {
     $bytes = [System.IO.File]::ReadAllBytes($Path)
@@ -42,6 +47,10 @@ function Get-RepositorySha256([string]$Path) {
 $files = Get-ChildItem -LiteralPath $RepositoryRoot -File -Recurse | Where-Object {
     $_.FullName -ne $Output -and
     $_.FullName -ne $LegacyLauncherMarker -and
+    $_.FullName -ne $LegacyUpdaterBat -and
+    $_.FullName -ne $LegacyUpdaterPs1 -and
+    $_.FullName -ne $UserSettingsFile -and
+    $_.FullName -ne $PendingCompatibilityFile -and
     $_.FullName -notmatch '[\\/]\.git[\\/]' -and
     $_.FullName -notmatch '[\\/]Tools and diagnostics[\\/]Diagnostics[\\/]Logs[\\/](?!\.gitkeep$)'
 } | Sort-Object FullName
