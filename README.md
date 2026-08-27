@@ -1,136 +1,169 @@
-# Enhanced PS5 DualSense Bridge V1.4
+# Enhanced PS5 DualSense Haptics Bridge
 
-Windows companion for the **Enhanced PS5 DualSense Haptics** BeamNG.drive mod.
-It provides controller-side stereo haptics, adaptive triggers, extended inputs,
-motion sensors and collision-only controller-speaker audio.
+Bring the full DualSense experience to **BeamNG.drive** with stereo haptics, adaptive triggers, dynamic lighting, controller-speaker audio and extended DualSense inputs.
 
-## Compatibility
+This is the companion Windows Bridge for the **Enhanced PS5 DualSense Haptics** BeamNG.drive mod. It is designed specifically for BeamNG.drive and automatically supports a DualSense connected through USB or Bluetooth without requiring DSX or DS4Windows.
 
-Bridge V1.4 is backward-compatible with the released BeamNG mod generations and
-introduces protocol 42 for Mod V1.2:
+## Main features
 
-| BeamNG mod | Gameplay protocol | Bridge V1.4 |
-| --- | ---: | --- |
-| V1.0 | 40 | Supported |
-| V1.1 | 41 | Supported |
-| V1.2 | 42 | Supported |
+- **Stereo haptics:** road surfaces, suspension movement, bumps, impacts, landings, tyres and other vehicle feedback.
+- **Adaptive triggers:** braking, ABS, wheel lock, throttle, wheelspin, TCS, gear shifts and airborne feedback.
+- **Dynamic lighting:** RPM-reactive DualSense lightbar and rev-limiter behavior.
+- **Controller speaker:** BeamNG collision sounds can be reproduced through the DualSense speaker.
+- **Touchpad inputs:** mouse control or configurable BeamNG inputs using one or two fingers.
+- **Motion inputs:** gyroscope, orientation and accelerometer channels can be mapped to BeamNG controls.
 
-Mod V1.2 intentionally does **not** publish an older gameplay mirror. It requires
-Bridge V1.4. Therefore an installed Bridge V1.3 (40/41 only) sees protocol 42 as
-unsupported and starts its compatibility-update flow instead of silently running
-with an incomplete feature set.
+## Installation
 
-This also makes release ordering safe: Bridge V1.4 may be published first because
-it still accepts Mod V1.0/protocol 40 and Mod V1.1/protocol 41. When Mod V1.2 is
-published later, the same Bridge already accepts protocol 42.
+1. Install **Enhanced PS5 DualSense Haptics** through the BeamNG Repository.
+2. Download `Enhanced_PS5_DualSense_Haptics_Bridge.zip` from the latest GitHub Release. Do not use GitHub's automatically generated source-code ZIP.
+3. Extract the complete Bridge folder anywhere on Windows. Do not run it directly from the ZIP and do not move individual files out of the folder.
+4. In BeamNG.drive, disable the game's native controller vibration while using this mod.
+5. Connect the DualSense through USB or Bluetooth.
+6. Run `START_BRIDGE.exe`, or use `START_BRIDGE_AND_BEAMNG.exe` to start both the Bridge and BeamNG.drive.
 
-## Install
+The Bridge can be launched before or after BeamNG.drive. If the controller is disconnected or switched between USB and Bluetooth, reconnect it and restart the Bridge.
 
-1. Install the BeamNG mod ZIP separately.
-2. Extract the complete Bridge ZIP to a writable folder.
-3. Run `START_BRIDGE.exe`.
-4. Optional: `START_BRIDGE_AND_BEAMNG.exe` starts BeamNG through Steam first.
+For the most detailed and spatial haptic feedback, USB is recommended. Bluetooth uses a lower-bandwidth haptic transport and therefore cannot reproduce the same level of detail as wired USB.
 
-USB is selected automatically when a wired DualSense is present; otherwise the
-launcher checks Bluetooth.
+## Controller settings
 
-## Normal use
+All user settings are available directly inside BeamNG.drive:
 
-The normal terminal deliberately shows only useful state: Bridge version,
-controller/transport, waiting for BeamNG, successful BeamNG connection,
-compatibility/update errors and important device failures.
+- **Pause -> Mods -> Enhanced PS5 DualSense Settings**
+- Default shortcut: **O**
 
-All user settings are managed from the unified **Enhanced PS5 DualSense Settings**
-menu inside BeamNG.drive. Detailed runtime telemetry is available only through
-explicit tools in `Diagnostics/`.
+The settings interface includes separate pages for haptics, adaptive triggers, speaker output, touchpad and motion inputs. Settings are saved by BeamNG.drive and persist through normal mod updates.
+
+## Architecture
+
+```text
+                 BeamNG.drive
+                      |
+          vehicle physics + events
+                      |
+                      v
+      Enhanced PS5 DualSense Haptics
+                      |
+       local settings / telemetry
+                      |
+                      v
+             Windows Bridge
+          +-----------+-----------+
+          |           |           |
+          v           v           v
+       Haptics     Triggers     Speaker
+          |           |           |
+          +-----------+-----------+
+                      |
+                 DualSense
+                USB / Bluetooth
+                      |
+          +-----------+-----------+
+          |                       |
+          v                       v
+       Touchpad               Motion sensors
+          |                       |
+          +-----------+-----------+
+                      |
+                      v
+          BeamNG extended inputs
+```
+
+Gameplay telemetry and controller data are processed locally on the PC.
 
 ## Touchpad and motion inputs
 
-The Bridge exposes the extra DualSense controls to BeamNG through one virtual device named **DualSense Extended Inputs**. The physical DualSense remains the normal game controller; the virtual device is only for the extra touch/motion channels.
+The Bridge exposes extra DualSense controls to BeamNG through a virtual device named **DualSense Extended Inputs**. The physical DualSense remains the normal game controller; the virtual device is used only for additional touchpad and motion channels.
 
 ### Touchpad
 
-The touchpad can work in two ways:
+The touchpad can be used as:
 
-- **Mouse mode**: the touch surface controls the Windows cursor. BeamNG binding capture takes priority automatically, so using the touchpad to assign a control does not also click the desktop.
-- **BeamNG input mode**: one-finger and two-finger horizontal/vertical channels can each be set to **Off**, **Swipe**, **Relative** or **Absolute**, then bound like other BeamNG inputs.
+- **Mouse mode** for controlling the Windows cursor.
+- **BeamNG input mode** with configurable one-finger and two-finger horizontal/vertical controls.
 
-Mouse mode is toggled from the mod UI; the old two-finger mouse shortcut is not used.
+Touch channels can be configured as **Off**, **Swipe**, **Relative** or **Absolute**, then assigned through BeamNG's normal bindings interface.
 
 ### Motion sensors
 
-Three configurable motion slots can use the DualSense gyroscope/orientation as **Rotation angle**, **Rotation speed**, **Tilt** or **Orientation**. Each slot can output either an axis or a button. Advanced options include axis selection, inversion, calibration/centering, deadzone, stability, range, button threshold/direction and hold/pulse behavior.
+Configurable motion inputs can use the DualSense gyroscope and orientation as rotation angle, rotation speed, tilt or orientation. They can be exposed as axes or buttons and adjusted with options such as inversion, calibration, centering, deadzone and sensitivity.
 
-The accelerometer X/Y/Z channels can also be exposed as axes or buttons, with configurable direction, threshold/range and pulse/hold behavior. These options can be used for custom steering, camera, head-look or other BeamNG bindings.
+The accelerometer X/Y/Z channels can also be mapped as BeamNG axes or buttons for custom controls such as steering, camera movement or head-look.
 
-### Bluetooth sleep
+Bluetooth idle timeout can also be configured from the Inputs page.
 
-The Inputs page also contains the Bluetooth idle timeout. Controller movement can optionally reset the sleep timer.
+## Simulated feedback
 
-## Controller speaker
+The system can react to vehicle physics and events including:
 
-The public profile mirrors **collision sounds only**. Speaker audio is created
-only after BeamNG itself emits the corresponding collision/break one-shot.
+- Asphalt and other road textures
+- Wet and slippery surfaces
+- Gravel, dirt, cobblestone and rumble strips
+- Sand, mud, grass, snow, ice and rock
+- Suspension movement and individual wheel impacts
+- Bumps, collisions and landings
+- Wheelspin and traction-control intervention
+- ABS and wheel lock
+- Gear shifts and rev limiter
+- Vehicle airborne state
+- Engine RPM
 
-USB and Bluetooth now use the same PCM voice model: independent BeamNG one-shots
-can overlap naturally and a BeamNG reset/reload immediately flushes the affected
-vehicle's active voices. Bluetooth no longer serializes complete collision cues in
-a FIFO.
+## Stereo haptics
 
-USB reads compatible collision samples from the user's local BeamNG sound banks.
-Bluetooth mixes the same local PCM voices, encodes the mixed stream to Opus at
-runtime and sends it through the single `0x36` writer.
+Road textures and vehicle events are generated from BeamNG's live physics rather than generic vibration presets. Stereo feedback allows impacts and road effects to correspond more closely to what happens on the left and right sides of the vehicle.
 
-Speaker output routing is owned by the BeamNG mod: **Controller only** suppresses
-only the matching BeamNG collision one-shot on the system output, while
-**Controller + PC** leaves BeamNG's original system sound untouched. The Bridge
-never creates an additional PC copy, so there is no duplicate system collision audio.
+## Adaptive triggers
 
-Bluetooth speaker calibration is applied at the **controller speaker output
-level**, not to BeamNG collision strength or event gain. USB is the reference
-output; Bluetooth uses speaker level `0x50` (80 on the DualSense practical
-0–100 speaker scale) in both setup and continuous `0x36` state.
+### L2 — Brake
 
-No BeamNG audio asset or FFmpeg binary is redistributed.
+L2 can provide:
 
-## Bluetooth ownership
+- Normal braking resistance
+- ABS pulse feedback
+- Locked-wheel behavior
+- Airborne behavior
 
-Bluetooth has one production HID writer: report `0x36`, carrying haptics,
-adaptive-trigger state and speaker frames. BeamNG owns DualSense RGB/RPM lighting;
-the Bridge does not run a competing RGB ownership path.
+### R2 — Throttle
 
-## Diagnostics
+R2 can provide:
 
-`Diagnostics/` contains opt-in support tools for hardware/audio listing,
-USB/Bluetooth logs, stereo tests, extended inputs, touchpad/bindings and motion.
-Normal launchers do not enable verbose diagnostic output.
+- Normal throttle resistance
+- Wheelspin feedback
+- TCS feedback
+- Gear-shift feedback
+- Airborne behavior
 
-## Updates
+## Dynamic lighting
 
-`UPDATE_BRIDGE.exe` reads `BRIDGE_COMPATIBILITY.json` from published GitHub
-Releases, then selects the newest stable Bridge that explicitly supports the
-protocol requested by the running mod. It never updates from the development
-branch and never downgrades the installed Bridge.
+The DualSense lightbar reacts to engine RPM and provides dedicated behavior near the rev limiter.
 
-If a mod protocol is newer than the installed Bridge supports, the runtime writes
-a pending compatibility request and can launch `UPDATE_BRIDGE.exe`. Managed files
-are verified against `SHA256SUMS.txt`; user logs and unmanaged local files are
-preserved.
+## Troubleshooting
 
-## Repository vs runtime ZIP
+**Mod installed but no feedback?** Make sure the mod is enabled in BeamNG's Mod Manager, then reload the current vehicle with `CTRL+R`. If it still does not initialize, restart BeamNG.drive.
 
-The GitHub repository contains `Source/`, tests, documentation and release
-scripts. The user-facing Bridge ZIP intentionally excludes all source/build files
-and contains only runtime files, configuration, support diagnostics and legal
-notices.
+- Do not run DSX, DS4Windows or another application that controls DualSense haptics or LEDs at the same time.
+- If the DualSense does not work correctly in BeamNG, disable Steam Input for BeamNG.drive in Steam -> Properties -> Controller.
+- Make sure Microsoft GameInput 3.0 or newer is installed. It can be installed or updated from an administrator terminal with `winget install Microsoft.GameInput`.
+- Updating the DualSense firmware through PlayStation Accessories is recommended.
 
-## Requirements
+## Code signing
 
-- Windows 10/11;
-- BeamNG.drive;
-- Sony DualSense over USB or Bluetooth.
+Free code signing is provided by [SignPath.io](https://signpath.io/), with a certificate provided by the [SignPath Foundation](https://signpath.org/).
+
+### Team roles
+
+- Committer and reviewer: [Ragnarok179](https://github.com/ragnarok179)
+- Approver: [Ragnarok179](https://github.com/ragnarok179)
+
+### Privacy
+
+BeamNG.drive gameplay telemetry and controller data are processed locally. No gameplay telemetry or personal user data is sent to the developer or to analytics services.
+
+Network access is used only for actions explicitly requested by the user, such as update actions through GitHub.
 
 ## License
 
-Project code is distributed under the MIT License. See `THIRD_PARTY_NOTICES.md`
-for protocol-reference and runtime-interoperability notices.
+MIT.
+
+See `LICENSE` and `THIRD_PARTY_NOTICES.md`.
