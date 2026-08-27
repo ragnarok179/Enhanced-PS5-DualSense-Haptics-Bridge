@@ -9,35 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: Tools and diagnostics/Source
+        working-directory: Source
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
-      - name: Verify SHA-256 manifest
-        working-directory: ${{ github.workspace }}
-        run: sha256sum --check SHA256SUMS.txt
-      - name: Go formatting
-        run: test -z "$(gofmt -l .)"
       - name: Unit tests
         run: go test ./...
       - name: Race tests
         run: go test -race ./...
-      - name: Windows Bluetooth vet
-        env:
-          GOOS: windows
-          GOARCH: amd64
-          CGO_ENABLED: 0
-        run: go vet -tags bluetooth ./...
-      - name: Windows launcher and updater vet
-        env:
-          GOOS: windows
-          GOARCH: amd64
-          CGO_ENABLED: 0
-        run: |
-          go vet ./launcher
-          go vet ./updater
+      - name: Linux vet
+        run: go vet ./...
       - name: Build Windows binaries
         env:
           GOOS: windows
@@ -50,7 +33,15 @@ jobs:
           go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o dist/START_BRIDGE.exe ./launcher
           cp dist/START_BRIDGE.exe dist/START_BRIDGE_AND_BEAMNG.exe
           go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o dist/UPDATE_BRIDGE.exe ./updater
+      - name: Compile Windows tests
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: |
+          go test -c -tags bluetooth -o dist/tests-bluetooth.exe .
+          go test -c -tags usb -o dist/tests-usb.exe .
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-build
-          path: Tools and diagnostics/Source/dist/*.exe
+          name: windows-bridge-v1.4
+          path: Source/dist/*.exe

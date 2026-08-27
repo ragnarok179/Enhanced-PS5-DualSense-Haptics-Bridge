@@ -1,8 +1,10 @@
-Tools and diagnostics/Diagnostics/Logs/*
-!Tools and diagnostics/Diagnostics/Logs/.gitkeep
-Tools and diagnostics/Source/dist/
-*.tmp
-.DS_Store
-Tools and diagnostics/Config/user_settings.json
-
-Tools and diagnostics/Config/pending_bridge_compatibility.json
+Diagnostics/Logs/*
+!Diagnostics/Logs/.gitkeep
+Source/dist/
+Bridge/*.exe
+START_BRIDGE.exe
+START_BRIDGE_AND_BEAMNG.exe
+UPDATE_BRIDGE.exe
+SHA256SUMS.txt
+Config/user_settings.json
+*.log

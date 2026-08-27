@@ -1,18 +1,24 @@
 {
   "schema": 1,
-  "protocolPolicy": "Protocol numbers are monotonic compatibility generations. Increment only for a breaking wire change and never reuse an older number.",
+  "protocolPolicy": "Protocol numbers are monotonic compatibility generations. Increment whenever a mod release requires a newer Bridge runtime contract or introduces an incompatible wire change; never reuse an older number.",
   "protocols": [
     {
       "id": 40,
-      "status": "legacy-transition",
+      "status": "legacy",
       "introduced": "V1.0",
-      "description": "Legacy V1.0 wire generation. Bridge V1.3 consumes real V1.0 packets; BeamNG Mod V1.1 may also emit a marked v40 migration mirror for Bridge V1.2, which V1.3 ignores to prevent duplicate effects."
+      "description": "V1.0 flat gameplay telemetry supported for backward compatibility."
     },
     {
       "id": 41,
-      "status": "current",
+      "status": "legacy",
       "introduced": "V1.1",
-      "description": "Current V1.1 semantic l2Effect/r2Effect protocol with Force48 trigger representation and sparse settings telemetry."
+      "description": "V1.1 semantic l2Effect/r2Effect and schema-based settings telemetry."
+    },
+    {
+      "id": 42,
+      "status": "current",
+      "introduced": "V1.2",
+      "description": "V1.2 compatibility generation. Requires Bridge V1.4 while retaining semantic trigger payloads."
     }
   ],
   "releases": [
@@ -23,6 +29,17 @@
       "protocols": [
         40,
         41
+      ],
+      "asset": "Enhanced_PS5_DualSense_Haptics_Bridge.zip"
+    },
+    {
+      "bridgeVersion": "V1.4",
+      "tag": "V1.4",
+      "channel": "stable",
+      "protocols": [
+        40,
+        41,
+        42
       ],
       "asset": "Enhanced_PS5_DualSense_Haptics_Bridge.zip"
     }
