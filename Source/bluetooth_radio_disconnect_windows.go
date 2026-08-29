@@ -73,7 +73,9 @@ func readDualSenseBluetoothAddress(d *device) (uint64, error) {
 	if r != 0 {
 		serial := utf16String(serialBuf)
 		if addr, err := parseBluetoothAddressString(serial); err == nil {
-			fmt.Printf("Bluetooth power-off: controller address from HID serial %s.\n", formatBluetoothAddress(addr))
+			if runtimeDiagnosticsEnabled() {
+				fmt.Printf("Bluetooth power-off: controller address from HID serial %s.\n", formatBluetoothAddress(addr))
+			}
 			return addr, nil
 		}
 	}

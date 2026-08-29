@@ -39,6 +39,7 @@ type githubRelease struct {
 type githubAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+	Digest             string `json:"digest"`
 }
 type updaterOptions struct {
 	CompatibilityUpdate bool
@@ -152,7 +153,7 @@ func serializeUpdaterOptions(o updaterOptions) []string {
 func launchWorker(o updaterOptions) int {
 	exe, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Unable to locate UPDATE_BRIDGE.exe: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[ERROR] Unable to locate the updater executable: %v\n", err)
 		return 2
 	}
 	root := filepath.Dir(exe)
@@ -161,7 +162,7 @@ func launchWorker(o updaterOptions) int {
 		fmt.Fprintln(os.Stderr, "[ERROR]", err)
 		return 2
 	}
-	worker := filepath.Join(temp, "UPDATE_BRIDGE_worker.exe")
+	worker := filepath.Join(temp, "UPDATE_DUALSENSE_worker.exe")
 	if err := copyFile(exe, worker); err != nil {
 		_ = os.RemoveAll(temp)
 		fmt.Fprintln(os.Stderr, "[ERROR]", err)
@@ -181,7 +182,7 @@ func launchWorker(o updaterOptions) int {
 	return 0
 }
 
-func runWorker(installRoot string, o updaterOptions) int {
+func runLegacyWorker(installRoot string, o updaterOptions) int {
 	abs, err := filepath.Abs(strings.TrimSpace(strings.Trim(installRoot, `"`)))
 	if err != nil || abs == "" {
 		fmt.Fprintln(os.Stderr, "[ERROR] The installation folder path is invalid.")

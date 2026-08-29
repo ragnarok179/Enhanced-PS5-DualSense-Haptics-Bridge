@@ -1,24 +1,16 @@
-# BeamNG gameplay compatibility protocol
+# BeamNG wire generations
 
-The gameplay protocol is a monotonic compatibility generation used to decide
-whether the installed Bridge can safely consume the running mod.
+The project used explicit gameplay protocol generations while the BeamNG mod and Bridge were distributed and updated separately.
 
-| Mod release | Gameplay protocol | Bridge V1.4 |
-| --- | ---: | --- |
-| V1.0 | 40 | Supported |
-| V1.1 | 41 | Supported |
-| V1.2 | 42 | Supported |
+| Generation | Historical release | Purpose in V1.41 |
+| ---: | --- | --- |
+| 40 | V1.0 | Legacy migration support |
+| 41 | V1.1 | Legacy migration support |
+| 42 | V1.2 | Legacy migration support |
+| 43 | V1.41 | One-time migration generation |
 
-Protocol 40 is the original flat trigger representation. Genuine V1.0 packets
-are converted from official 1–8 trigger strengths at decode time.
+Bridge V1.41 accepts generations 40-43 so older public installations can reach the unified V1.41 release.
 
-Protocol 41 introduced semantic `l2Effect` / `r2Effect` objects and schema-based
-settings telemetry for V1.1.
+From V1.41 onward, normal update compatibility is release-based: the BeamNG mod and Bridge use the same project version and `UPDATE_DUALSENSE.exe` requires both matching assets from one complete GitHub Release, updates the Bridge and stages the BeamNG mod ZIP for manual installation. Wire generations are no longer incremented merely because a project release number changes.
 
-Protocol 42 is the V1.2 compatibility generation. Its trigger objects remain
-semantic, but V1.2 requires Bridge V1.4 behaviour and therefore must not advertise
-itself as protocol 41. Mod V1.2 does not publish a legacy v40 mirror.
-
-Bridge V1.4 decodes 40, 41 and 42. A future protocol 43 is rejected until a later
-Bridge explicitly declares support. The runtime then creates a compatibility
-update request rather than guessing the new contract.
+A future wire-format breaking change may still introduce a new schema/generation if technically necessary, but that is separate from normal release versioning.

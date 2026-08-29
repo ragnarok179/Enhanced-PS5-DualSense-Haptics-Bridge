@@ -1,24 +1,30 @@
 {
   "schema": 1,
-  "protocolPolicy": "Protocol numbers are monotonic compatibility generations. Increment whenever a mod release requires a newer Bridge runtime contract or introduces an incompatible wire change; never reuse an older number.",
+  "protocolPolicy": "Legacy migration index for pre-V1.41 Bridge updaters. Protocol 43 is the one-time V1.41 migration generation. From V1.41 onward normal releases use one shared Mod + Bridge release version. UPDATE_DUALSENSE.exe updates the Bridge and downloads the matching BeamNG mod ZIP for manual installation.",
   "protocols": [
     {
       "id": 40,
       "status": "legacy",
       "introduced": "V1.0",
-      "description": "V1.0 flat gameplay telemetry supported for backward compatibility."
+      "description": "Legacy V1.0 gameplay telemetry. Retained so old installations can migrate to V1.41."
     },
     {
       "id": 41,
       "status": "legacy",
       "introduced": "V1.1",
-      "description": "V1.1 semantic l2Effect/r2Effect and schema-based settings telemetry."
+      "description": "Legacy V1.1 semantic trigger generation. Retained so old installations can migrate to V1.41."
     },
     {
       "id": 42,
-      "status": "current",
+      "status": "legacy",
       "introduced": "V1.2",
-      "description": "V1.2 compatibility generation. Requires Bridge V1.4 while retaining semantic trigger payloads."
+      "description": "Legacy V1.2 generation. Retained so Bridge V1.4 installations can migrate to V1.41."
+    },
+    {
+      "id": 43,
+      "status": "migration",
+      "introduced": "V1.41",
+      "description": "One-time V1.41 migration generation used to move pre-V1.41 installations to the unified Mod + Bridge release model."
     }
   ],
   "releases": [
@@ -26,22 +32,22 @@
       "bridgeVersion": "V1.3",
       "tag": "V1.3",
       "channel": "stable",
-      "protocols": [
-        40,
-        41
-      ],
+      "protocols": [40, 41],
       "asset": "Enhanced_PS5_DualSense_Haptics_Bridge.zip"
     },
     {
       "bridgeVersion": "V1.4",
       "tag": "V1.4",
       "channel": "stable",
-      "protocols": [
-        40,
-        41,
-        42
-      ],
+      "protocols": [40, 41, 42],
       "asset": "Enhanced_PS5_DualSense_Haptics_Bridge.zip"
+    },
+    {
+      "bridgeVersion": "V1.41",
+      "tag": "V1.41",
+      "channel": "stable",
+      "protocols": [40, 41, 42, 43],
+      "asset": "Enhanced_PS5_DualSense_Haptics_Bridge_V1.41.zip"
     }
   ]
 }

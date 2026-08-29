@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -25,8 +22,10 @@ type telemetryEnvelope struct {
 }
 
 type protocolCompatibilityGuard struct {
-	once           sync.Once
-	compatibleOnce sync.Once
+	unsupportedOnce sync.Once
+	migrationOnce   sync.Once
+	futureOnce      sync.Once
+	compatibleOnce  sync.Once
 }
 
 func inspectTelemetryEnvelope(data []byte) (telemetryEnvelope, bool) {
@@ -52,57 +51,62 @@ func (g *protocolCompatibilityGuard) handlePacket(data []byte, diagnostics bool,
 	if !ok || !env.Project {
 		return false
 	}
-	// Marked migration mirrors never establish compatibility by themselves.
-	// This prevents a legacy packet emitted after an unsupported canonical packet
-	// from clearing the pending update request.
 	if env.LegacyCompat {
 		return true
 	}
-	if gameplayProtocolSupported(env.Version) {
-		g.markCompatible()
+
+	if !gameplayProtocolSupported(env.Version) {
+		g.unsupportedOnce.Do(func() {
+			_ = writePendingCompatibilityRequest(env)
+			mod := fallbackTelemetryModVersion(env.ModVersion)
+			fmt.Printf("UPDATE REQUIRED: BeamNG mod %s uses wire generation %d; Bridge %s supports %d-%d.\n", mod, env.Version, buildinfo.DisplayVersion, protocolMinVersion, protocolMaxVersion)
+			fmt.Println("Run UPDATE_DUALSENSE.exe manually and follow the displayed steps.")
+			requestStop()
+		})
+		return true
+	}
+
+	g.markCompatible()
+	modVersion := strings.TrimSpace(env.ModVersion)
+	if modVersion == "" {
 		return false
 	}
-	g.once.Do(func() {
-		_ = writePendingCompatibilityRequest(env)
-		mod := strings.TrimSpace(env.ModVersion)
-		if mod == "" {
-			mod = "unknown"
-		}
-		fmt.Printf("UPDATE REQUIRED: BeamNG mod %s uses gameplay protocol %d; Bridge %s supports protocols %d-%d.\n", mod, env.Version, buildinfo.DisplayVersion, protocolMinVersion, protocolMaxVersion)
-		if env.ProtocolMin > 0 && env.ProtocolMax >= env.ProtocolMin {
-			fmt.Printf("Mod protocol range: %d-%d.\n", env.ProtocolMin, env.ProtocolMax)
-		}
-		if env.Version < protocolMinVersion {
-			fmt.Println("This mod protocol is older than the minimum supported by this Bridge. Install a Bridge release that declares support for that protocol.")
+	cmp := compatibility.CompareVersions(modVersion, buildinfo.DisplayVersion)
+	if cmp < 0 {
+		g.migrationOnce.Do(func() {
+			_ = writePendingCompatibilityRequest(env)
+			fmt.Println()
+			fmt.Println("============================================================")
+			fmt.Println("ONE-TIME UPDATE MIGRATION")
+			fmt.Println("============================================================")
+			fmt.Println("1. Close this Bridge window.")
+			fmt.Println("2. Run UPDATE_DUALSENSE.exe from the Bridge folder.")
+			fmt.Println("3. Follow the update instructions shown by UPDATE_DUALSENSE.exe.")
+			fmt.Println()
+			fmt.Println("You can also open IMPORTANT_V1.41_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt for these steps.")
+		})
+		return false
+	}
+	if cmp > 0 {
+		g.futureOnce.Do(func() {
+			fmt.Printf("VERSION MISMATCH: BeamNG mod %s is newer than Bridge %s.\n", modVersion, buildinfo.DisplayVersion)
+			fmt.Println("Run UPDATE_DUALSENSE.exe manually and follow the displayed steps.")
 			requestStop()
-			return
-		}
-		if diagnostics {
-			fmt.Println("Compatibility updater is not launched automatically in diagnostic mode. Run UPDATE_BRIDGE.exe after closing this log session.")
-			requestStop()
-			return
-		}
-		fmt.Print("Install the newest compatible Bridge release now? [Y/N]: ")
-		answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		answer = strings.ToLower(strings.TrimSpace(answer))
-		if answer != "y" && answer != "yes" {
-			fmt.Println("Bridge stopped. Run UPDATE_BRIDGE.exe later to retry the compatibility update.")
-			requestStop()
-			return
-		}
-		if err := launchCompatibilityUpdater(env); err != nil {
-			fmt.Printf("Unable to start UPDATE_BRIDGE.exe: %v\n", err)
-			fmt.Println("Run UPDATE_BRIDGE.exe manually after closing the Bridge.")
-		} else {
-			fmt.Println("Updater started. The Bridge will close while a compatible stable release is installed.")
-		}
-		requestStop()
-	})
-	return true
+		})
+		return true
+	}
+	return false
 }
 
 func (g *protocolCompatibilityGuard) markCompatible() {
 	g.compatibleOnce.Do(clearPendingCompatibilityRequest)
+}
+
+func fallbackTelemetryModVersion(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "unknown"
+	}
+	return strings.TrimSpace(v)
 }
 
 func bridgeInstallRoot() (string, error) {
@@ -112,9 +116,11 @@ func bridgeInstallRoot() (string, error) {
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(exe), "..")), nil
 }
+
 func pendingCompatibilityPath(root string) string {
 	return filepath.Join(root, "Config", compatibility.PendingFileName)
 }
+
 func writePendingCompatibilityRequest(env telemetryEnvelope) error {
 	root, err := bridgeInstallRoot()
 	if err != nil {
@@ -131,33 +137,10 @@ func writePendingCompatibilityRequest(env telemetryEnvelope) error {
 	data = append(data, '\n')
 	return os.WriteFile(path, data, 0o644)
 }
+
 func clearPendingCompatibilityRequest() {
 	root, err := bridgeInstallRoot()
 	if err == nil {
 		_ = os.Remove(pendingCompatibilityPath(root))
 	}
-}
-func launchCompatibilityUpdater(env telemetryEnvelope) error {
-	root, err := bridgeInstallRoot()
-	if err != nil {
-		return err
-	}
-	updater := filepath.Join(root, "UPDATE_BRIDGE.exe")
-	if !regularFileExists(updater) {
-		return fmt.Errorf("missing %s", updater)
-	}
-	args := []string{"--compatibility-update", "--protocol", strconv.Itoa(env.Version), "--wait-pid", strconv.Itoa(os.Getpid()), "--relaunch"}
-	if m := strings.TrimSpace(env.ModVersion); m != "" {
-		args = append(args, "--mod-version", m)
-	}
-	cmd := exec.Command(updater, args...)
-	cmd.Dir = root
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Start()
-}
-func regularFileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
 }

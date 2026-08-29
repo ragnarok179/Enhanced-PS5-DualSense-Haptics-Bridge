@@ -3,7 +3,7 @@ package compatibility
 import "testing"
 
 func sampleIndex() Index {
-	return Index{Schema: 1, Protocols: []ProtocolGeneration{{ID: 40}, {ID: 41}, {ID: 42}, {ID: 43}}, Releases: []Release{{BridgeVersion: "V1.3", Tag: "V1.3", Channel: "stable", Protocols: []int{40, 41}, Asset: "old.zip"}, {BridgeVersion: "V1.4", Tag: "V1.4", Channel: "stable", Protocols: []int{40, 41, 42}, Asset: "new.zip"}, {BridgeVersion: "V1.5", Tag: "V1.5", Channel: "stable", Protocols: []int{40, 41, 42, 43}, Asset: "future.zip"}}}
+	return Index{Schema: 1, Protocols: []ProtocolGeneration{{ID: 40}, {ID: 41}, {ID: 42}, {ID: 43}}, Releases: []Release{{BridgeVersion: "V1.3", Tag: "V1.3", Channel: "stable", Protocols: []int{40, 41}, Asset: "old.zip"}, {BridgeVersion: "V1.4", Tag: "V1.4", Channel: "stable", Protocols: []int{40, 41, 42}, Asset: "new.zip"}, {BridgeVersion: "V1.41", Tag: "V1.41", Channel: "stable", Protocols: []int{40, 41, 42, 43}, Asset: "future.zip"}}}
 }
 func TestCompatibilityCandidatesNewestFirst(t *testing.T) {
 	idx := sampleIndex()
@@ -11,12 +11,12 @@ func TestCompatibilityCandidatesNewestFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := CompatibleCandidates(idx, Target{ModVersion: "V1.2", Protocol: 42})
-	if len(got) != 2 || got[0].BridgeVersion != "V1.5" || got[1].BridgeVersion != "V1.4" {
+	if len(got) != 2 || got[0].BridgeVersion != "V1.41" || got[1].BridgeVersion != "V1.4" {
 		t.Fatalf("unexpected candidates: %+v", got)
 	}
 	got = CompatibleCandidates(idx, Target{ModVersion: "V1.3", Protocol: 43})
-	if len(got) != 1 || got[0].BridgeVersion != "V1.5" {
-		t.Fatalf("protocol 43 should require V1.5: %+v", got)
+	if len(got) != 1 || got[0].BridgeVersion != "V1.41" {
+		t.Fatalf("protocol 43 should require V1.41: %+v", got)
 	}
 }
 func TestReleaseModRange(t *testing.T) {

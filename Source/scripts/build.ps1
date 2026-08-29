@@ -4,6 +4,7 @@ $repository = Split-Path -Parent $source
 $bridge = Join-Path $repository 'Bridge'
 $startBridge = Join-Path $repository 'START_BRIDGE.exe'
 $startBridgeAndBeamNG = Join-Path $repository 'START_BRIDGE_AND_BEAMNG.exe'
+$updateDualSense = Join-Path $repository 'UPDATE_DUALSENSE.exe'
 $updateBridge = Join-Path $repository 'UPDATE_BRIDGE.exe'
 
 New-Item -ItemType Directory -Force -Path $bridge | Out-Null
@@ -21,9 +22,16 @@ try {
     go build -trimpath -buildvcs=false -ldflags '-s -w -buildid=' -tags usb -o (Join-Path $bridge 'EnhancedPS5DualSenseHapticsUSB.exe') .
     go build -trimpath -buildvcs=false -ldflags '-s -w -buildid=' -o $startBridge ./launcher
     Copy-Item -LiteralPath $startBridge -Destination $startBridgeAndBeamNG -Force
-    go build -trimpath -buildvcs=false -ldflags '-s -w -buildid=' -o $updateBridge ./updater
+    go build -trimpath -buildvcs=false -ldflags '-s -w -buildid=' -o $updateDualSense ./updater
+    Copy-Item -LiteralPath $updateDualSense -Destination $updateBridge -Force
 
-    Write-Host "Bridge V1.4 Windows binaries rebuilt in $repository"
+    $buildInfo = Get-Content -LiteralPath (Join-Path $source 'internal\buildinfo\buildinfo.go') -Raw
+    if ($buildInfo -notmatch 'DisplayVersion\s*=\s*"([^"]+)"') { throw 'Unable to read DisplayVersion from buildinfo.go' }
+    $releaseVersion = $Matches[1]
+    $releaseInfo = [ordered]@{ schema = 1; project = 'Enhanced PS5 DualSense Haptics'; version = $releaseVersion; updateModel = 'bridge-auto-mod-manual' } | ConvertTo-Json
+    [System.IO.File]::WriteAllText((Join-Path $repository 'PROJECT_RELEASE.json'), $releaseInfo + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
+
+    Write-Host "Enhanced PS5 DualSense Haptics $releaseVersion Windows binaries rebuilt in $repository"
 } finally {
     Pop-Location
 }

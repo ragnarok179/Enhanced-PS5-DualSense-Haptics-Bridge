@@ -1,0 +1,6 @@
+Enhanced PS5 DualSense Haptics V1.41
+ONE-TIME MIGRATION INSTRUCTIONS
+
+1. Close the Bridge.
+2. Run UPDATE_DUALSENSE.exe from the Bridge folder.
+3. Follow the update instructions shown by UPDATE_DUALSENSE.exe.

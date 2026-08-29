@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
+	"github.com/Ragnarok179/enhanced-ps5-dualsense-haptics-bridge/internal/compatibility"
 )
 
 // BeamNG telemetry is intentionally transport-neutral. USB and Bluetooth consume
@@ -199,8 +202,11 @@ func decodeTelemetry(data []byte) (telemetry, bool) {
 		// Protocol 41 is the semantic l2Effect/r2Effect generation used by Mod V1.1.
 		normalizeSemanticTriggerEffects(&t)
 	case 42:
-		// Protocol 42 is the V1.2 compatibility generation. Its trigger payload
-		// remains semantic, but V1.2 requires Bridge V1.4 runtime behaviour.
+		// Legacy V1.2 semantic generation.
+		normalizeSemanticTriggerEffects(&t)
+	case 43:
+		// V1.41 migration generation. The wire payload remains semantic; from
+		// this release onward user-facing compatibility is release-version based.
 		normalizeSemanticTriggerEffects(&t)
 	default:
 		return telemetry{}, false
@@ -316,9 +322,12 @@ func telemetryCompatibilityError(data []byte) string {
 }
 
 func telemetryConnectionSummary(t telemetry) string {
-	mod := t.ModVersion
+	mod := strings.TrimSpace(t.ModVersion)
 	if mod == "" {
-		mod = "legacy/unknown"
+		return fmt.Sprintf("BeamNG.drive connected - legacy mod - wire generation %d.", t.Version)
 	}
-	return fmt.Sprintf("BeamNG.drive connection: OK - mod %s - protocol %d compatible.", mod, t.Version)
+	if compatibility.CompareVersions(mod, bridgeDisplayVersion) == 0 {
+		return fmt.Sprintf("BeamNG.drive connected - release %s synchronized.", bridgeDisplayVersion)
+	}
+	return fmt.Sprintf("BeamNG.drive connected - mod %s / Bridge %s.", mod, bridgeDisplayVersion)
 }

@@ -15,8 +15,8 @@ echo   1-finger tap   = left click
 echo   2 fingers      = vertical / horizontal scroll
 echo   2-finger tap   = right click
 echo.
-echo Mouse movement, taps and scrolling should react immediately.
-echo Only SendInput failures are printed by the Bridge.
+echo On the first injected event, expect:
+echo   Touchpad mouse: SendInput active (INPUT=40 bytes).
 echo.
 echo If SendInput fails while BeamNG is running as administrator, run this
 echo diagnostic at the same integrity level. Press Ctrl+C to stop.

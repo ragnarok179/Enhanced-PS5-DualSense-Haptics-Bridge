@@ -12,7 +12,7 @@ const (
 	IndexSchemaVersion  = 1
 	IndexFileName       = "BRIDGE_COMPATIBILITY.json"
 	PendingFileName     = "pending_bridge_compatibility.json"
-	DefaultReleaseAsset = "Enhanced_PS5_DualSense_Haptics_Bridge.zip"
+	DefaultReleaseAsset = "Enhanced_PS5_DualSense_Haptics_Bridge_V1.41.zip"
 )
 
 type Target struct {

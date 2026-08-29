@@ -114,8 +114,8 @@ func main() {
 	defer unregisterExactSpeaker()
 	lastSpeakerGeneration := uint32(0xFFFFFFFF)
 
-	fmt.Println("Enhanced PS5 DualSense Bridge", bridgeDisplayVersion)
-	fmt.Printf("Controller: %s (Bluetooth)\n", d.product)
+	fmt.Println("Enhanced PS5 DualSense Bridge", bridgeDisplayVersion, "- Bluetooth")
+	fmt.Printf("Controller connected: %s\n", d.product)
 	if diagnosticStatus {
 		profileVersion, profilePath, profileHash := feelProfileInfo()
 		fmt.Printf("DIAG transport=Bluetooth output=%d feature=%d profile=%s path=%q sha256=%.12s\n", d.outputLen, d.featureLen, profileVersion, profilePath, profileHash)
@@ -133,7 +133,7 @@ func main() {
 		os.Exit(2)
 	}
 	defer conn.Close()
-	fmt.Println("Waiting for BeamNG.drive mod...")
+	fmt.Println("Waiting for BeamNG.drive...")
 
 	mixer := newCanonicalHapticMixer()
 	done := make(chan struct{})
@@ -199,8 +199,6 @@ func main() {
 	feelEngine := newSharedFeelEngine(mixer)
 	pcmStream := newCanonicalPCMStream()
 	writeErrors, writes := 0, 0
-	controllerIssueShown := false
-	userStatus := newRuntimeUserStatus(time.Now())
 	firstHeaderLogged := false
 
 	// Runtime timing metrics. A successful WriteFile only confirms that Windows
@@ -293,7 +291,6 @@ func main() {
 		}
 
 		latest, lastPacket := mixer.snapshot()
-		userStatus.tick(lastPacket, now, diagnosticStatus)
 		canonicalFrames := canonicalFramesForBluetoothFrames(frames)
 		frame := feelEngine.step(latest, lastPacket, now, canonicalFrames)
 		controlState := frame.Control
@@ -343,23 +340,10 @@ func main() {
 		}
 		if err != nil {
 			writeErrors++
-			if diagnosticStatus {
-				if writeErrors < 5 || writeErrors%50 == 0 {
-					fmt.Println("Bluetooth haptic write:", err)
-				}
-			} else if !controllerIssueShown {
-				fmt.Println("Controller connection issue (Bluetooth). Retrying...")
-				controllerIssueShown = true
-			}
-			if writeErrors >= 12 {
-				fmt.Println("Controller disconnected. Bridge stopped.")
-				requestStop()
+			if writeErrors < 5 || writeErrors%50 == 0 {
+				fmt.Println("Bluetooth haptic write:", err)
 			}
 		} else {
-			if controllerIssueShown && !diagnosticStatus {
-				fmt.Println("Controller connection restored (Bluetooth).")
-			}
-			controllerIssueShown = false
 			writes++
 			writeErrors = 0
 		}

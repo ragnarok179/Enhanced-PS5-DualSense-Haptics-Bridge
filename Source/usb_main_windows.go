@@ -37,11 +37,11 @@ func buildUSBSharedStateReport(d *device, t telemetry, _ [3]byte) []byte {
 	common[1] = 0x00
 	cfg := currentSpeakerSettings()
 	if cfg.enabled {
-		common[0] |= 0xA0                             // audio path + speaker volume; never compatible rumble
-		common[1] |= 0x80                             // AUDIO_CONTROL2
-		common[5] = dualSenseSpeakerHardwareReference // hardware reference; user volume is applied once in generated PCM
+		common[0] |= 0xA0 // audio path + speaker volume; never compatible rumble
+		common[1] |= 0x80 // AUDIO_CONTROL2
+		common[5] = 100   // hardware speaker volume; user volume is applied once in generated PCM
 		common[7] = 0x30
-		common[37] = dualSenseSpeakerPreamp
+		common[37] = 0x02
 	}
 	common[2], common[3] = 0, 0
 	fillTrigger(common[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz)
@@ -213,8 +213,8 @@ func main() {
 	defer unregisterExactSpeaker()
 	audio.speaker = speaker
 
-	fmt.Println("Enhanced PS5 DualSense Bridge", bridgeDisplayVersion)
-	fmt.Printf("Controller: %s (USB)\n", d.product)
+	fmt.Println("Enhanced PS5 DualSense Bridge", bridgeDisplayVersion, "- USB")
+	fmt.Printf("Controller connected: %s\n", d.product)
 	if diagnosticStatus {
 		actualBufferMS := float64(audio.bufferFrames) * 1000.0 / float64(audio.sampleRate)
 		v, profilePath, profileHash := feelProfileInfo()
@@ -242,7 +242,7 @@ func main() {
 	if diagnosticStatus {
 		fmt.Println("DIAG telemetry UDP", telemetryAddress)
 	}
-	fmt.Println("Waiting for BeamNG.drive mod...")
+	fmt.Println("Waiting for BeamNG.drive...")
 
 	mixer := newCanonicalHapticMixer()
 	engine := newSharedFeelEngine(mixer)
@@ -323,9 +323,6 @@ func main() {
 	lastHIDWrite := time.Now()
 	var hidWrites uint64
 	var hidKeepAliveWrites uint64
-	hidWriteErrors := 0
-	controllerIssueShown := false
-	userStatus := newRuntimeUserStatus(time.Now())
 	lastStatus := time.Time{}
 	for {
 		select {
@@ -352,7 +349,6 @@ func main() {
 		}
 
 		latest, lastPacket := mixer.snapshot()
-		userStatus.tick(lastPacket, now, diagnosticStatus)
 		frame := engine.step(latest, lastPacket, now, canonicalFramesPerStep)
 		canonicalSamples := frame.Samples
 		// USB consumes the canonical 48-kHz reference directly. Bluetooth-only filtering happens inside the transport adapter.
@@ -363,23 +359,8 @@ func main() {
 		keepAliveDue := stateSynced && now.Sub(lastHIDWrite) >= usbHIDKeepAliveInterval
 		if stateChanged || keepAliveDue {
 			if err := d.writeReport(buildUSBSharedStateReport(d, frame.Control, frame.RGB)); err != nil {
-				hidWriteErrors++
-				if diagnosticStatus {
-					fmt.Println("HID USB:", err)
-				} else if !controllerIssueShown {
-					fmt.Println("Controller connection issue (USB). Retrying...")
-					controllerIssueShown = true
-				}
-				if hidWriteErrors >= 12 {
-					fmt.Println("Controller disconnected. Bridge stopped.")
-					requestStop()
-				}
+				fmt.Println("HID USB:", err)
 			} else {
-				if controllerIssueShown && !diagnosticStatus {
-					fmt.Println("Controller connection restored (USB).")
-				}
-				controllerIssueShown = false
-				hidWriteErrors = 0
 				hidWrites++
 				if keepAliveDue && !stateChanged {
 					hidKeepAliveWrites++

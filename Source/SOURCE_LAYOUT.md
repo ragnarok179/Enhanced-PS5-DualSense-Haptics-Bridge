@@ -10,7 +10,8 @@ The repository separates maintainable source code from the public runtime packag
 ├─ Diagnostics/     explicit support diagnostics
 ├─ START_BRIDGE.exe
 ├─ START_BRIDGE_AND_BEAMNG.exe
-├─ UPDATE_BRIDGE.exe
+├─ UPDATE_DUALSENSE.exe
+├─ UPDATE_BRIDGE.exe  compatibility alias
 ├─ README.md
 ├─ LICENSE
 ├─ THIRD_PARTY_NOTICES.md
@@ -30,7 +31,7 @@ stays in explicitly named USB/Bluetooth files.
 
 - Bridge public application version: centralized in `version.go`.
 - Supported gameplay protocol range: centralized in `protocol.go`.
-- Current Bridge V1.4 supports BeamNG gameplay protocols 40, 41 and 42.
+- Bridge V1.41 accepts legacy/migration wire generations 40-43. From V1.41 onward normal updates are release-version based and UPDATE_DUALSENSE.exe updates the Bridge and downloads the matching BeamNG mod ZIP for manual installation.
 - Common Feel profile version is independent from the Bridge application version;
   it changes only when the calibrated profile itself changes.
 
@@ -52,15 +53,20 @@ launcher detects the connected transport and starts the matching executable from
 
 ## Public updater
 
-`Source/updater/main.go` builds `UPDATE_BRIDGE.exe`. It reads the compatibility
-index published with stable GitHub Releases, selects the newest non-downgrade
-release that explicitly supports the detected BeamNG gameplay protocol, and then
-downloads the asset named by that release entry. The package is verified with its
-embedded `SHA256SUMS.txt` before installation.
+`Source/updater/` builds `UPDATE_DUALSENSE.exe`. The same V1.41 binary is also
+shipped as `UPDATE_BRIDGE.exe` so old installations and shortcuts keep working.
 
-The updater still knows the names of a few files from the old V1.1 layout solely
-so it can remove them during migration. Those files are not part of the modern
-runtime package or manifest.
+From V1.41 onward the updater is manual and release-based. It accepts only stable
+GitHub Releases containing both matching versioned ZIP assets, downloads and
+verifies both packages before installation, then updates the BeamNG mod and
+Bridge with backup and rollback, while the BeamNG mod ZIP is staged for manual installation.
+The updater writes and opens one common version-matched `..._INSTALL_INSTRUCTIONS.txt` tutorial next to the staged mod ZIP. When V1.41 is reached through an old Bridge-only updater, the running Bridge prints only a short one-time migration message directing the user to `UPDATE_DUALSENSE.exe`.
+
+The legacy compatibility-index code remains in the source because pre-V1.41
+`UPDATE_BRIDGE.exe` binaries already installed on users' PCs need
+`BRIDGE_COMPATIBILITY.json` to land on Bridge V1.41. V1.41 is the migration hub;
+once there, normal updates use the unified updater instead of protocol-based
+release selection.
 
 ## Release manifest
 

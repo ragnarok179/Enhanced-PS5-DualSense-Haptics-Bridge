@@ -1548,7 +1548,7 @@ func TestDecodeTelemetryAcceptsModV12OnProtocol42(t *testing.T) {
 	if got.R2Mode != 1 || got.R2StartStrength != 32 || got.R2EndStrength != 64 {
 		t.Fatalf("V1.2 R2 semantic conversion mismatch: %+v", got)
 	}
-	if summary := telemetryConnectionSummary(got); summary != "BeamNG.drive connection: OK - mod V1.2 - protocol 42 compatible." {
+	if summary := telemetryConnectionSummary(got); summary != "BeamNG.drive connected - mod V1.2 / Bridge V1.41." {
 		t.Fatalf("unexpected summary: %q", summary)
 	}
 }
@@ -1591,18 +1591,22 @@ func TestProtocol42BodyEventProducesStrongStereoPCM(t *testing.T) {
 	}
 }
 
-func TestProtocol43RequiresBridgeUpdate(t *testing.T) {
-	packet := []byte(`{"protocolId":"DPH","modVersion":"future","protocolMin":43,"protocolMax":43,"v":43,"active":true}`)
-	if _, ok := decodeTelemetry(packet); ok {
-		t.Fatal("unsupported protocol 43 was decoded by Bridge V1.4")
+func TestProtocol43AcceptsUnifiedV15Release(t *testing.T) {
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.41","protocolMin":43,"protocolMax":43,"v":43,"active":true}`)
+	got, ok := decodeTelemetry(packet)
+	if !ok {
+		t.Fatal("V1.41 wire generation 43 packet was rejected")
 	}
-	if msg := telemetryCompatibilityError(packet); msg == "" {
-		t.Fatal("unsupported protocol 43 did not request a Bridge update")
+	if summary := telemetryConnectionSummary(got); summary != "BeamNG.drive connected - release V1.41 synchronized." {
+		t.Fatalf("unexpected V1.41 summary: %q", summary)
+	}
+	if msg := telemetryCompatibilityError(packet); msg != "" {
+		t.Fatalf("V1.41 wire generation 43 unexpectedly requested update: %q", msg)
 	}
 }
 
 func TestDecodeTelemetryRejectsUnsupportedGameplayProtocols(t *testing.T) {
-	for _, version := range []int{39, 43, 44} {
+	for _, version := range []int{39, 44, 45} {
 		packet := []byte(fmt.Sprintf(`{"protocolId":"DPH","v":%d,"active":true}`, version))
 		if _, ok := decodeTelemetry(packet); ok {
 			t.Fatalf("unsupported protocol %d was accepted", version)

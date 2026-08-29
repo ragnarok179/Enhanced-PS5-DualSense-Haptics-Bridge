@@ -321,7 +321,7 @@ func buildBluetoothSetStateData63WithFlags(t telemetry, rgb [3]byte, updateLight
 		state[1] |= 0x08 // RELEASE_LEDS, one frame only
 	}
 	state[2], state[3] = 0, 0
-	state[4], state[5], state[6] = dualSenseSpeakerHardwareReference, byte(math.Round(float64(dualSenseSpeakerHardwareReference)*bluetoothSpeakerHardwareOutputGain)), 0x40
+	state[4], state[5], state[6] = 100, byte(math.Round(100*bluetoothSpeakerHardwareOutputGain)), 0x40
 	state[7], state[8], state[9] = 0x09, 0x00, 0x00
 	fillTrigger(state[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz)
 	fillTrigger(state[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz)
@@ -400,11 +400,7 @@ func buildBluetoothControlReportMasked(sequence byte, t telemetry, rgb [3]byte, 
 	return finalizeBluetoothControlReport(report)
 }
 
-const (
-	dualSenseSpeakerHardwareReference  byte = 100
-	dualSenseSpeakerPreamp             byte = 0x02
-	bluetoothSpeakerHardwareOutputGain      = 0.80
-)
+const bluetoothSpeakerHardwareOutputGain = 0.80
 
 // buildBluetoothSpeakerSetupReport enables the internal membrane speaker without
 // selecting compatible rumble or microphone duplex. User volume is already part
@@ -419,9 +415,9 @@ func buildBluetoothSpeakerSetupReport(sequence byte, volume int, enabled bool) [
 	report := buildBluetoothControlBase(sequence, enable1, enable2)
 	common := report[3:50]
 	if enabled {
-		common[5] = byte(math.Round(float64(dualSenseSpeakerHardwareReference) * bluetoothSpeakerHardwareOutputGain)) // Bluetooth speaker transport calibration
-		common[7] = 0x30                                                                                              // PATH_SPEAKER
-		common[37] = dualSenseSpeakerPreamp                                                                           // speaker preamp
+		common[5] = byte(math.Round(100 * bluetoothSpeakerHardwareOutputGain)) // Bluetooth speaker transport calibration
+		common[7] = 0x30                                                       // PATH_SPEAKER
+		common[37] = 0x02                                                      // speaker preamp
 	}
 	return finalizeBluetoothControlReport(report)
 }
