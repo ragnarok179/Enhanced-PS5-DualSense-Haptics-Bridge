@@ -329,15 +329,55 @@ func TestStageModForManualInstallNeverNeedsBeamNGPath(t *testing.T) {
 }
 
 func TestManualInstallGuideContainsOnlyUserInstallationSteps(t *testing.T) {
-	guide := manualInstallGuideText("V1.41")
-	for _, want := range []string{"BEAMNG MOD INSTALLATION", "Mod Manager", "Repository page", "Unsubscribe and remove", "Do NOT extract", "make sure the mod is enabled"} {
-		if !strings.Contains(guide, want) {
-			t.Fatalf("tutorial missing %q: %s", want, guide)
+	legacy := manualInstallGuideText("V1.41", true)
+	for _, want := range []string{"ONE-TIME MIGRATION", "Mod Manager", "Repository page", "Unsubscribe and remove", "Do NOT extract", "make sure the mod is enabled"} {
+		if !strings.Contains(legacy, want) {
+			t.Fatalf("legacy tutorial missing %q: %s", want, legacy)
 		}
 	}
-	for _, forbidden := range []string{"ONE-TIME MIGRATION", "What this updater will do", "What it will NOT do", "downloads and verifies", "Bridge-only updater", "does not search"} {
-		if strings.Contains(guide, forbidden) {
-			t.Fatalf("tutorial contains non-user or migration explanation %q: %s", forbidden, guide)
+	for _, forbidden := range []string{"What this updater will do", "What it will NOT do", "downloads and verifies", "Bridge-only updater", "does not search"} {
+		if strings.Contains(legacy, forbidden) {
+			t.Fatalf("legacy tutorial contains internal updater explanation %q: %s", forbidden, legacy)
 		}
+	}
+	normal := manualInstallGuideText("V1.42", false)
+	if !strings.Contains(normal, "BEAMNG MOD INSTALLATION") || strings.Contains(normal, "ONE-TIME MIGRATION") {
+		t.Fatalf("normal tutorial is not distinct from legacy tutorial: %s", normal)
+	}
+}
+
+func TestVerifyBridgeRuntimePackageDoesNotRequireProjectReleaseMetadata(t *testing.T) {
+	root := t.TempDir()
+	required := []string{
+		"START_BRIDGE.exe",
+		"START_BRIDGE_AND_BEAMNG.exe",
+		unifiedUpdaterName,
+		legacyUpdaterAlias,
+		filepath.Join("Bridge", "EnhancedPS5DualSenseHapticsUSB.exe"),
+		filepath.Join("Bridge", "EnhancedPS5DualSenseHapticsBluetooth.exe"),
+	}
+	manifest := make(map[string]string, len(required))
+	for _, rel := range required {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(rel), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		hash, err := fileSHA256(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifest[normalizeRelative(rel)] = hash
+	}
+	if err := writeManifest(filepath.Join(root, manifestName), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(filepath.Join(root, "PROJECT_RELEASE.json")) {
+		t.Fatal("PROJECT_RELEASE.json must not exist in this test package")
+	}
+	if err := verifyBridgeRuntimePackage(root, "V1.41"); err != nil {
+		t.Fatalf("valid Bridge package without PROJECT_RELEASE.json was rejected: %v", err)
 	}
 }

@@ -18,11 +18,10 @@ import (
 )
 
 const (
-	unifiedUpdaterName     = "UPDATE_DUALSENSE.exe"
-	legacyUpdaterAlias     = "UPDATE_BRIDGE.exe"
-	modMarkerPath          = "lua/dualsensePhysicsHaptics/config.lua"
-	projectReleaseFileName = "PROJECT_RELEASE.json"
-	projectName            = "Enhanced PS5 DualSense Haptics"
+	unifiedUpdaterName = "UPDATE_DUALSENSE.exe"
+	legacyUpdaterAlias = "UPDATE_BRIDGE.exe"
+	modMarkerPath      = "lua/dualsensePhysicsHaptics/config.lua"
+	projectName        = "Enhanced PS5 DualSense Haptics"
 )
 
 type projectRelease struct {
@@ -70,6 +69,10 @@ func runWorker(installRoot string, o updaterOptions) int {
 	}
 
 	bridgeCurrent := compatibility.CompareVersions(buildinfo.DisplayVersion, target.Version) == 0
+	legacyMigration := bridgeCurrent
+	if pending, ok := readPendingCompatibilityRequest(installRoot); ok && strings.TrimSpace(pending.ModVersion) != "" {
+		legacyMigration = compatibility.CompareVersions(pending.ModVersion, target.Version) < 0
+	}
 	if compatibility.CompareVersions(target.Version, buildinfo.DisplayVersion) < 0 {
 		fmt.Printf("[INFO] Installed Bridge %s is newer than the latest complete release %s; no downgrade will be performed.\n", buildinfo.DisplayVersion, target.Version)
 		return 0
@@ -78,7 +81,8 @@ func runWorker(installRoot string, o updaterOptions) int {
 	fmt.Printf("Installed Bridge: %s\n", buildinfo.DisplayVersion)
 	fmt.Printf("Latest complete release: %s\n", target.Version)
 	fmt.Println()
-	fmt.Printf("Update to %s? [Y/N]: ", target.Version)
+	printPreUpdateGuide(target, legacyMigration)
+	fmt.Print("Continue? [Y/N]: ")
 	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	if answer != "y" && answer != "yes" {
@@ -185,7 +189,7 @@ func runWorker(installRoot string, o updaterOptions) int {
 		}
 	}
 
-	guidePath, guideErr := writeManualInstallGuide(manualModPath, target.Version)
+	guidePath, guideErr := writeManualInstallGuide(manualModPath, target.Version, legacyMigration)
 	if guideErr != nil {
 		fmt.Fprintln(os.Stderr, "[WARNING] Unable to save the update instructions next to the BeamNG mod ZIP:", guideErr)
 	}
@@ -194,14 +198,32 @@ func runWorker(installRoot string, o updaterOptions) int {
 	if guidePath != "" {
 		_ = openTextGuide(guidePath)
 	}
-	printFinalInstallGuide(manualModPath, target.Version, guidePath)
+	printFinalInstallGuide(manualModPath, target.Version, legacyMigration, guidePath)
 	return 0
 }
 
-func printFinalInstallGuide(modPath, version string, guidePath string) {
+func printPreUpdateGuide(target projectRelease, legacyMigration bool) {
+	fmt.Println("============================================================")
+	if legacyMigration {
+		fmt.Println("ONE-TIME MIGRATION GUIDE")
+	} else {
+		fmt.Println("UPDATE GUIDE")
+	}
+	fmt.Println("============================================================")
+	fmt.Println("1. Close BeamNG.drive if it is open.")
+	fmt.Printf("2. Press Y to continue with the %s update.\n", target.Version)
+	fmt.Println("3. When the Downloads folder and installation instructions open, follow the BeamNG steps shown there.")
+	fmt.Println()
+}
+
+func printFinalInstallGuide(modPath, version string, legacyMigration bool, guidePath string) {
 	fmt.Println()
 	fmt.Println("============================================================")
-	fmt.Println("BEAMNG MOD INSTALLATION")
+	if legacyMigration {
+		fmt.Println("ONE-TIME MIGRATION - BEAMNG INSTALLATION")
+	} else {
+		fmt.Println("BEAMNG MOD INSTALLATION")
+	}
 	fmt.Println("============================================================")
 	fmt.Println("If your old mod came from the BeamNG Repository:")
 	fmt.Println("1. Open BeamNG.drive.")
@@ -227,10 +249,14 @@ func printFinalInstallGuide(modPath, version string, guidePath string) {
 	_ = version
 }
 
-func manualInstallGuideText(version string) string {
+func manualInstallGuideText(version string, legacyMigration bool) string {
 	var b strings.Builder
 	b.WriteString(projectName + " " + version + "\r\n")
-	b.WriteString("BEAMNG MOD INSTALLATION\r\n")
+	if legacyMigration {
+		b.WriteString("ONE-TIME MIGRATION - BEAMNG INSTALLATION\r\n")
+	} else {
+		b.WriteString("BEAMNG MOD INSTALLATION\r\n")
+	}
 	b.WriteString("\r\nIF YOUR OLD MOD CAME FROM THE BEAMNG REPOSITORY:\r\n")
 	b.WriteString("1. Open BeamNG.drive.\r\n")
 	b.WriteString("2. Open Mod Manager.\r\n")
@@ -250,10 +276,10 @@ func manualInstallGuideText(version string) string {
 	return b.String()
 }
 
-func writeManualInstallGuide(modPath, version string) (string, error) {
+func writeManualInstallGuide(modPath, version string, legacyMigration bool) (string, error) {
 	dir := filepath.Dir(modPath)
 	guide := filepath.Join(dir, "Enhanced_PS5_DualSense_Haptics_"+version+"_INSTALL_INSTRUCTIONS.txt")
-	if err := os.WriteFile(guide, []byte(manualInstallGuideText(version)), 0o644); err != nil {
+	if err := os.WriteFile(guide, []byte(manualInstallGuideText(version, legacyMigration)), 0o644); err != nil {
 		return "", err
 	}
 	return guide, nil
@@ -476,7 +502,6 @@ func verifyBridgeRuntimePackage(root, targetVersion string) error {
 		"START_BRIDGE_AND_BEAMNG.exe",
 		unifiedUpdaterName,
 		legacyUpdaterAlias,
-		projectReleaseFileName,
 		filepath.Join("Bridge", "EnhancedPS5DualSenseHapticsUSB.exe"),
 		filepath.Join("Bridge", "EnhancedPS5DualSenseHapticsBluetooth.exe"),
 		manifestName,
@@ -486,18 +511,6 @@ func verifyBridgeRuntimePackage(root, targetVersion string) error {
 			return fmt.Errorf("missing required Bridge file %s", rel)
 		}
 	}
-	data, err := os.ReadFile(filepath.Join(root, projectReleaseFileName))
-	if err != nil {
-		return err
-	}
-	var releaseInfo struct {
-		Project string `json:"project"`
-		Version string `json:"version"`
-	}
-	if json.Unmarshal(data, &releaseInfo) != nil || releaseInfo.Project != projectName || compatibility.CompareVersions(releaseInfo.Version, targetVersion) != 0 {
-		return fmt.Errorf("Bridge release metadata does not match %s", targetVersion)
-	}
-
 	manifest, err := readManifest(filepath.Join(root, manifestName))
 	if err != nil {
 		return err

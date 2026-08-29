@@ -28,9 +28,6 @@ try {
     $buildInfo = Get-Content -LiteralPath (Join-Path $source 'internal\buildinfo\buildinfo.go') -Raw
     if ($buildInfo -notmatch 'DisplayVersion\s*=\s*"([^"]+)"') { throw 'Unable to read DisplayVersion from buildinfo.go' }
     $releaseVersion = $Matches[1]
-    $releaseInfo = [ordered]@{ schema = 1; project = 'Enhanced PS5 DualSense Haptics'; version = $releaseVersion; updateModel = 'bridge-auto-mod-manual' } | ConvertTo-Json
-    [System.IO.File]::WriteAllText((Join-Path $repository 'PROJECT_RELEASE.json'), $releaseInfo + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
-
     Write-Host "Enhanced PS5 DualSense Haptics $releaseVersion Windows binaries rebuilt in $repository"
 } finally {
     Pop-Location

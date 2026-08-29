@@ -15,9 +15,7 @@ $ManagedRootFiles = @(
     'README.md',
     'LICENSE',
     'THIRD_PARTY_NOTICES.md',
-    'COMPATIBILITY.md',
     'BRIDGE_COMPATIBILITY.json',
-    'PROJECT_RELEASE.json',
     'IMPORTANT_V1.41_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt'
 )
 $ManagedDirectories = @('Bridge', 'Config', 'Diagnostics')
