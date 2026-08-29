@@ -26,6 +26,7 @@ function Test-PublicManagedFile([string]$FullName) {
     $relative = $relative -replace '\\','/'
 
     if ($relative -eq 'Config/user_settings.json') { return $false }
+    if ($relative -eq 'Config/pending_bridge_compatibility.json') { return $false }
     if ($relative -match '^Diagnostics/Logs/') { return $false }
 
     if ($ManagedRootFiles -contains $relative) { return $true }

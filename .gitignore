@@ -8,3 +8,5 @@ UPDATE_BRIDGE.exe
 SHA256SUMS.txt
 Config/user_settings.json
 *.log
+
+Config/pending_bridge_compatibility.json

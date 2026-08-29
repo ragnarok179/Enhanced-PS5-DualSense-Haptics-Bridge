@@ -44,5 +44,5 @@ jobs:
           go test -c -tags usb -o dist/tests-usb.exe .
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-bridge-v1.41
+          name: windows-bridge
           path: Source/dist/*.exe
