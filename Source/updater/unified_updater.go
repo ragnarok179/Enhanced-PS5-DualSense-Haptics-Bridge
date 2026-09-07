@@ -170,7 +170,7 @@ func runWorker(installRoot string, o updaterOptions) int {
 				return 1
 			}
 		}
-		managedRemote := withoutCompatibilityFiles(remoteManifest)
+		managedRemote := remoteManifest
 		newFiles, changed, removed, err := compareInstallation(installRoot, managedRemote, localManifest)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "[ERROR] Unable to compare Bridge installation:", err)

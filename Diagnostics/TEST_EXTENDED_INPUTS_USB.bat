@@ -1,8 +1,10 @@
 @echo off
 setlocal
+set "RELEASE=V1.42"
+title Enhanced PS5 DualSense Haptics %RELEASE% - Extended Inputs USB
 cd /d "%~dp0\..\Bridge"
 echo ============================================================
-echo DualSense extended-input diagnostic - USB
+echo DualSense extended-input diagnostic - USB - %RELEASE%
 echo ============================================================
 echo.
 echo Close the normal Bridge first and connect the controller by USB.

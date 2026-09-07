@@ -100,8 +100,7 @@ type telemetryUserSettings struct {
 	SurfaceRollingStrengths map[string]int `json:"surfaceRollingStrengths"`
 	SurfaceSlipStrengths    map[string]int `json:"surfaceSlipStrengths"`
 
-	// Legacy percentage fields are retained for real protocol-40/settings
-	// migrations only. V1.2 sends the schema-12 fields above.
+	// Historical percentage fields are retained for settings migration only.
 	MasterPercent     int `json:"masterPercent"`
 	SurfacePercent    int `json:"surfacePercent"`
 	ImpactPercent     int `json:"impactPercent"`
@@ -189,20 +188,11 @@ func decodeTelemetry(data []byte) (telemetry, bool) {
 	}
 
 	switch t.Version {
-	case 40:
-		// Marked protocol-40 packets are the V1.1 migration mirror that was
-		// emitted for old Bridges. V1.4 understands the semantic generations
-		// directly, so the mirror must be ignored to prevent duplicated events
-		// and state rollback. Mod V1.2/protocol 42 emits no legacy mirror.
-		if t.LegacyCompat {
-			return telemetry{}, false
-		}
-		normalizeLegacyOfficialTriggerStrengths(&t)
 	case 41:
-		// Protocol 41 is the semantic l2Effect/r2Effect generation used by Mod V1.1.
+		// Protocol 41 is retained for the supported V1.3 migration floor.
 		normalizeSemanticTriggerEffects(&t)
 	case 42:
-		// Legacy V1.2 semantic generation.
+		// Protocol 42 is retained for V1.4-era migration.
 		normalizeSemanticTriggerEffects(&t)
 	case 43:
 		// V1.41 migration generation. The wire payload remains semantic; from
@@ -268,24 +258,6 @@ func normalizeSemanticTriggerEffects(t *telemetry) {
 	}
 	t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz = effectToLegacyFields(t.L2Effect)
 	t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz = effectToLegacyFields(t.R2Effect)
-}
-
-func normalizeLegacyOfficialTriggerStrengths(t *telemetry) {
-	if t == nil {
-		return
-	}
-	if t.L2Mode == 1 {
-		t.L2StartStrength = strength8To255(t.L2StartStrength)
-		t.L2EndStrength = strength8To255(t.L2EndStrength)
-	} else if t.L2Mode == 2 {
-		t.L2Amplitude = strength8To255(t.L2Amplitude)
-	}
-	if t.R2Mode == 1 {
-		t.R2StartStrength = strength8To255(t.R2StartStrength)
-		t.R2EndStrength = strength8To255(t.R2EndStrength)
-	} else if t.R2Mode == 2 {
-		t.R2Amplitude = strength8To255(t.R2Amplitude)
-	}
 }
 
 type telemetryHeader struct {

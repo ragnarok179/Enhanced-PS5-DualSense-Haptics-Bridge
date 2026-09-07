@@ -1,8 +1,10 @@
 @echo off
 setlocal
+set "RELEASE=V1.42"
+title Enhanced PS5 DualSense Haptics %RELEASE% - Touchpad Mouse Bluetooth
 cd /d "%~dp0\..\Bridge"
 echo ============================================================
-echo DualSense Touchpad Windows Mouse - Bluetooth diagnostic
+echo DualSense Touchpad Windows Mouse - Bluetooth diagnostic - %RELEASE%
 echo ============================================================
 echo.
 echo Close the normal Bridge first and connect the controller by Bluetooth.

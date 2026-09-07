@@ -1386,17 +1386,6 @@ func TestOfficialStrengthUsesNormalized255Internally(t *testing.T) {
 	}
 }
 
-func TestLegacyTelemetryConvertsOfficialTriggerStrengthTo255(t *testing.T) {
-	packet := []byte(`{"v":40,"active":true,"l2Mode":1,"l2StartStrength":1,"l2EndStrength":4,"r2Mode":2,"r2Amplitude":2,"raw":{"engineRunning":true}}`)
-	got, ok := decodeTelemetry(packet)
-	if !ok {
-		t.Fatal("legacy telemetry packet was rejected")
-	}
-	if got.L2StartStrength != 32 || got.L2EndStrength != 128 || got.R2Amplitude != 64 {
-		t.Fatalf("legacy trigger normalization mismatch: %+v", got)
-	}
-}
-
 func TestUSBPCMQueueReportsOnlyRealQueuedFrames(t *testing.T) {
 	var q sharedPCMQueue
 	samples := make([]int8, 512*2)
@@ -1417,7 +1406,7 @@ func TestDecodeTelemetryAppliesBeamNGUserSettings(t *testing.T) {
 	resetUserSettings()
 	defer resetUserSettings()
 
-	packet := []byte(`{"v":40,"active":true,"userSettings":{"masterPercent":85,"surfacePercent":70,"impactPercent":125,"l2BrakePercent":80,"absPercent":140,"r2ThrottlePercent":65,"r2EffectsPercent":110}}`)
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.3","protocolMin":41,"protocolMax":41,"v":41,"active":true,"userSettings":{"masterPercent":85,"surfacePercent":70,"impactPercent":125,"l2BrakePercent":80,"absPercent":140,"r2ThrottlePercent":65,"r2EffectsPercent":110}}`)
 	decoded, ok := decodeTelemetry(packet)
 	if !ok {
 		t.Fatal("telemetry packet with BeamNG user settings was rejected")
@@ -1434,14 +1423,14 @@ func TestDecodeTelemetryAppliesBeamNGUserSettings(t *testing.T) {
 	}
 }
 
-func TestDecodeTelemetryAppliesModV12Schema12SettingsWithoutMutingFeedback(t *testing.T) {
+func TestDecodeTelemetryAppliesV14Schema12SettingsWithoutMutingFeedback(t *testing.T) {
 	resetUserSettings()
 	defer resetUserSettings()
 
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.2","protocolMin":42,"protocolMax":42,"v":42,"active":true,"userSettings":{"schema":12,"triggerForceScale":48,"masterEnabled":true,"masterStrength":255,"surfaceEnabled":true,"surfaceStrength":255,"impactEnabled":true,"impactStrength":255,"l2BrakeEnabled":true,"l2BrakeStartStrength":12,"l2BrakeEndStrength":36,"l2BrakeStrength":36,"absEnabled":true,"absStrength":42,"r2ThrottleEnabled":true,"r2ThrottleStartStrength":6,"r2ThrottleEndStrength":12,"r2ThrottleStrength":6,"r2EffectsEnabled":true,"r2EffectsStrength":48,"lightingEnabled":true,"lightingBrightness":255},"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"resistance","startPosition":0,"startForce":0.125,"endForce":0.25},"raw":{"engineRunning":true,"groundedWheels":4}}`)
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.4","protocolMin":42,"protocolMax":42,"v":42,"active":true,"userSettings":{"schema":12,"triggerForceScale":48,"masterEnabled":true,"masterStrength":255,"surfaceEnabled":true,"surfaceStrength":255,"impactEnabled":true,"impactStrength":255,"l2BrakeEnabled":true,"l2BrakeStartStrength":12,"l2BrakeEndStrength":36,"l2BrakeStrength":36,"absEnabled":true,"absStrength":42,"r2ThrottleEnabled":true,"r2ThrottleStartStrength":6,"r2ThrottleEndStrength":12,"r2ThrottleStrength":6,"r2EffectsEnabled":true,"r2EffectsStrength":48,"lightingEnabled":true,"lightingBrightness":255},"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"resistance","startPosition":0,"startForce":0.125,"endForce":0.25},"raw":{"engineRunning":true,"groundedWheels":4}}`)
 	got, ok := decodeTelemetry(packet)
 	if !ok {
-		t.Fatal("V1.2 schema-12 telemetry was rejected")
+		t.Fatal("V1.4 schema-12 telemetry was rejected")
 	}
 	settings := currentUserSettings()
 	if settings.Haptics.MasterPercent != 100 || settings.Haptics.SurfacePercent != 100 || settings.Haptics.ImpactPercent != 100 {
@@ -1500,72 +1489,48 @@ func TestDecodeTelemetryWithoutBeamNGSettingsKeepsCurrentPreferences(t *testing.
 	defer resetUserSettings()
 	setUserSettingValue(0, 73)
 
-	if _, ok := decodeTelemetry([]byte(`{"v":40,"active":true}`)); !ok {
-		t.Fatal("legacy telemetry packet was rejected")
+	if _, ok := decodeTelemetry([]byte(`{"protocolId":"DPH","modVersion":"V1.3","protocolMin":41,"protocolMax":41,"v":41,"active":true}`)); !ok {
+		t.Fatal("V1.3 telemetry packet was rejected")
 	}
 	if got := currentUserSettings().Haptics.MasterPercent; got != 73 {
-		t.Fatalf("legacy telemetry unexpectedly replaced local settings: got %d want 73", got)
+		t.Fatalf("V1.3 telemetry unexpectedly replaced local settings: got %d want 73", got)
 	}
 }
 
-func TestDecodeTelemetryAcceptsModV10Protocol40(t *testing.T) {
-	packet := []byte(`{"v":40,"active":true,"l2Mode":1,"l2StartZone":0,"l2StartStrength":2,"l2EndStrength":6,"r2Mode":3,"r2StartZone":0,"r2StartStrength":1,"r2EndStrength":1}`)
+func TestDecodeTelemetryAcceptsV13Protocol41Semantic(t *testing.T) {
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.3","protocolMin":41,"protocolMax":41,"v":41,"active":true,"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"fine","startPosition":0.5,"startForce":0.0208333333},"raw":{"engineRunning":true}}`)
 	got, ok := decodeTelemetry(packet)
 	if !ok {
-		t.Fatal("mod V1.0 protocol 40 packet was rejected")
-	}
-	if got.L2StartStrength != strength8To255(2) || got.L2EndStrength != strength8To255(6) {
-		t.Fatalf("V1.0 trigger conversion mismatch: %+v", got)
-	}
-	if got.R2Mode != 3 || got.R2StartStrength != 1 {
-		t.Fatalf("V1.0 fine trigger semantics changed: %+v", got)
-	}
-}
-
-func TestDecodeTelemetryAcceptsModV11Protocol41Semantic(t *testing.T) {
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.1","protocolMin":40,"protocolMax":41,"v":41,"active":true,"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"fine","startPosition":0.5,"startForce":0.0208333333},"raw":{"engineRunning":true}}`)
-	got, ok := decodeTelemetry(packet)
-	if !ok {
-		t.Fatal("mod V1.1 protocol 41 packet was rejected")
+		t.Fatal("mod V1.3 protocol 41 packet was rejected")
 	}
 	if got.L2Mode != 1 || got.L2StartZone != 0 || got.L2StartStrength != 64 || got.L2EndStrength != 191 {
-		t.Fatalf("V1.1 semantic resistance conversion mismatch: %+v", got)
+		t.Fatalf("V1.3 semantic resistance conversion mismatch: %+v", got)
 	}
 	if got.R2Mode != 3 || got.R2StartZone != 128 || got.R2StartStrength != 1 || got.R2EndStrength != 1 {
-		t.Fatalf("V1.1 semantic fine conversion mismatch: %+v", got)
+		t.Fatalf("V1.3 semantic fine conversion mismatch: %+v", got)
 	}
 }
 
-func TestDecodeTelemetryAcceptsModV12OnProtocol42(t *testing.T) {
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.2","protocolMin":42,"protocolMax":42,"v":42,"active":true,"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"resistance","startPosition":0,"startForce":0.125,"endForce":0.25},"raw":{"engineRunning":true}}`)
+func TestDecodeTelemetryAcceptsV14OnProtocol42(t *testing.T) {
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.4","protocolMin":42,"protocolMax":42,"v":42,"active":true,"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"resistance","startPosition":0,"startForce":0.125,"endForce":0.25},"raw":{"engineRunning":true}}`)
 	got, ok := decodeTelemetry(packet)
 	if !ok {
-		t.Fatal("mod V1.2 protocol 42 packet was rejected")
+		t.Fatal("mod V1.4 protocol 42 packet was rejected")
 	}
 	if got.L2Mode != 1 || got.L2StartStrength != 64 || got.L2EndStrength != 191 {
-		t.Fatalf("V1.2 L2 semantic conversion mismatch: %+v", got)
+		t.Fatalf("V1.4 L2 semantic conversion mismatch: %+v", got)
 	}
 	if got.R2Mode != 1 || got.R2StartStrength != 32 || got.R2EndStrength != 64 {
-		t.Fatalf("V1.2 R2 semantic conversion mismatch: %+v", got)
+		t.Fatalf("V1.4 R2 semantic conversion mismatch: %+v", got)
 	}
-	if summary := telemetryConnectionSummary(got); summary != "BeamNG.drive connected - mod V1.2 / Bridge V1.41." {
+	if summary := telemetryConnectionSummary(got); summary != "BeamNG.drive connected - mod V1.4 / Bridge V1.42." {
 		t.Fatalf("unexpected summary: %q", summary)
 	}
 }
 
-func TestMarkedV40MigrationMirrorIsIgnored(t *testing.T) {
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.2","protocolMin":40,"protocolMax":41,"legacyCompat":true,"v":40,"active":true,"bodyEvent":99,"l2Mode":1,"l2StartStrength":8,"l2EndStrength":8}`)
-	if _, ok := decodeTelemetry(packet); ok {
-		t.Fatal("marked v40 migration mirror must be ignored by Bridge V1.4")
-	}
-	if msg := telemetryCompatibilityError(packet); msg != "" {
-		t.Fatalf("migration mirror must not request update: %q", msg)
-	}
-}
-
 func TestProtocol42BodyEventProducesStrongStereoPCM(t *testing.T) {
-	initialJSON := []byte(`{"protocolId":"DPH","modVersion":"V1.2","protocolMin":42,"protocolMax":42,"v":42,"active":true,"seq":1,"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"resistance","startPosition":0,"startForce":0.125,"endForce":0.25},"bodyEvent":0,"raw":{"speed":8,"groundedWheels":4,"surfaceMaterialL":0,"surfaceMaterialR":0}}`)
-	bumpJSON := []byte(`{"protocolId":"DPH","modVersion":"V1.2","protocolMin":42,"protocolMax":42,"v":42,"active":true,"seq":2,"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"resistance","startPosition":0,"startForce":0.125,"endForce":0.25},"bodyEvent":1,"bodyStrength":1,"bodyLeftStrength":1,"bodyRightStrength":0,"bodyDurationMS":116,"bodyKind":"bump","bodySide":-1,"bodyProfile":"suspension_bump","bodySourceReason":"test","bodySourceConfidence":1,"bodySourceLeftScore":1,"bodySourceLeftContact":1,"bodySourceLeftPeak":1,"bodySourceLeftEnergy":1,"bodySourceLeftWheel":1,"bodySourceLeftAxle":1,"raw":{"speed":8,"groundedWheels":4,"surfaceMaterialL":0,"surfaceMaterialR":0}}`)
+	initialJSON := []byte(`{"protocolId":"DPH","modVersion":"V1.4","protocolMin":42,"protocolMax":42,"v":42,"active":true,"seq":1,"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"resistance","startPosition":0,"startForce":0.125,"endForce":0.25},"bodyEvent":0,"raw":{"speed":8,"groundedWheels":4,"surfaceMaterialL":0,"surfaceMaterialR":0}}`)
+	bumpJSON := []byte(`{"protocolId":"DPH","modVersion":"V1.4","protocolMin":42,"protocolMax":42,"v":42,"active":true,"seq":2,"l2Effect":{"kind":"resistance","startPosition":0,"startForce":0.25,"endForce":0.75},"r2Effect":{"kind":"resistance","startPosition":0,"startForce":0.125,"endForce":0.25},"bodyEvent":1,"bodyStrength":1,"bodyLeftStrength":1,"bodyRightStrength":0,"bodyDurationMS":116,"bodyKind":"bump","bodySide":-1,"bodyProfile":"suspension_bump","bodySourceReason":"test","bodySourceConfidence":1,"bodySourceLeftScore":1,"bodySourceLeftContact":1,"bodySourceLeftPeak":1,"bodySourceLeftEnergy":1,"bodySourceLeftWheel":1,"bodySourceLeftAxle":1,"raw":{"speed":8,"groundedWheels":4,"surfaceMaterialL":0,"surfaceMaterialR":0}}`)
 	initial, ok := decodeTelemetry(initialJSON)
 	if !ok {
 		t.Fatal("initial protocol42 packet rejected")
@@ -1591,22 +1556,22 @@ func TestProtocol42BodyEventProducesStrongStereoPCM(t *testing.T) {
 	}
 }
 
-func TestProtocol43AcceptsUnifiedV15Release(t *testing.T) {
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.41","protocolMin":43,"protocolMax":43,"v":43,"active":true}`)
+func TestProtocol43AcceptsUnifiedV142Release(t *testing.T) {
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.42","protocolMin":43,"protocolMax":43,"v":43,"active":true}`)
 	got, ok := decodeTelemetry(packet)
 	if !ok {
-		t.Fatal("V1.41 wire generation 43 packet was rejected")
+		t.Fatal("V1.42 wire generation 43 packet was rejected")
 	}
-	if summary := telemetryConnectionSummary(got); summary != "BeamNG.drive connected - release V1.41 synchronized." {
-		t.Fatalf("unexpected V1.41 summary: %q", summary)
+	if summary := telemetryConnectionSummary(got); summary != "BeamNG.drive connected - release V1.42 synchronized." {
+		t.Fatalf("unexpected V1.42 summary: %q", summary)
 	}
 	if msg := telemetryCompatibilityError(packet); msg != "" {
-		t.Fatalf("V1.41 wire generation 43 unexpectedly requested update: %q", msg)
+		t.Fatalf("V1.42 wire generation 43 unexpectedly requested update: %q", msg)
 	}
 }
 
 func TestDecodeTelemetryRejectsUnsupportedGameplayProtocols(t *testing.T) {
-	for _, version := range []int{39, 44, 45} {
+	for _, version := range []int{39, 40, 44, 45} {
 		packet := []byte(fmt.Sprintf(`{"protocolId":"DPH","v":%d,"active":true}`, version))
 		if _, ok := decodeTelemetry(packet); ok {
 			t.Fatalf("unsupported protocol %d was accepted", version)

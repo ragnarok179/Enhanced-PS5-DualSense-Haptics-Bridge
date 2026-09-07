@@ -1,6 +1,8 @@
 @echo off
 chcp 65001 >nul
 setlocal
+set "RELEASE=V1.42"
+title Enhanced PS5 DualSense Haptics %RELEASE% - Hardware Diagnostic
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "BRIDGE=%ROOT%\Bridge"
 set "USB=%BRIDGE%\EnhancedPS5DualSenseHapticsUSB.exe"
@@ -19,6 +21,8 @@ if not exist "%BT%" (
   exit /b 2
 )
 
+echo Enhanced PS5 DualSense Haptics %RELEASE% - Hardware diagnostic
+echo.
 pushd "%BRIDGE%"
 echo ============================================================
 echo DualSense USB probe

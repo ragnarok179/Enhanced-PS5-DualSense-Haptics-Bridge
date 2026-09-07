@@ -43,6 +43,8 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
   - Create / Share button
   - PlayStation button *(Steam Input disabled)*
   - Mute button
+- **Local Split Screen compatibility:**
+  - Designed to work alongside the **Local Split Screen** mod for multi-controller local play.
 
 ---
 
@@ -68,9 +70,21 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
 - No specific launch order is required.
 - If you disconnect the DualSense or switch between USB and Bluetooth, reconnect the controller and restart the Bridge.
 - Do not run DSX, DS4Windows or another application controlling DualSense haptics or LEDs at the same time.
+- **Local Split Screen:** controller assignment remains managed by BeamNG / Local Split Screen while this Bridge handles the DualSense-specific features.
+
+
+## Legacy update path (V1.3+)
+
+Supported legacy migration starts at **V1.3**.
+
+- A **V1.3** installation can update its Bridge **directly to V1.42** through `BRIDGE_COMPATIBILITY.json`.
+- A **V1.4-era** installation can also update **directly to V1.42** the same way.
+- After the Bridge reaches **V1.42**, run `UPDATE_DUALSENSE.exe` to download the matching BeamNG mod ZIP and follow the installation tutorial it opens.
+- Versions older than **V1.3** are intentionally outside the supported migration range.
+
+V1.41 remains a historical release, but it is no longer a required migration hub for supported V1.3+ updates.
 
 ---
-
 
 # Controls, bindings and settings
 
@@ -171,16 +185,6 @@ Each direction can be configured as:
 
 ---
 
-# Code signing
-
-The official Windows Bridge executables are intended to be code-signed through [**SignPath**](https://signpath.org/).
-
-Windows Smart App Control or Microsoft Defender may occasionally warn about newly released executables because new binaries can initially have limited reputation.
-
-Always download the Bridge from the official GitHub Releases page.
-
----
-
 # Architecture
 
 ```text
@@ -217,7 +221,7 @@ BeamNG.drive
                      │                                 │
                      ▼                                 ▼
           Gameplay telemetry decoder          DualSense HID input
-       legacy wire generations 40-43         touchpad / buttons / IMU
+       supported wire generations 41-43      touchpad / buttons / IMU
                      │                                 │
                      ▼                                 ├─► UDP 6977 ─► extended inputs
              Common Feel Engine                        └─► UDP 6979 ─► motion inputs
@@ -267,7 +271,9 @@ For deeper implementation details, see [`ARCHITECTURE.md`](https://github.com/ra
 
 Run `UPDATE_DUALSENSE.exe` to check for updates and follow the displayed instructions.
 
-If you still use an older `UPDATE_BRIDGE.exe`, let it finish first, then run `UPDATE_DUALSENSE.exe` and follow the one-time migration instructions.
+Legacy migration support starts at **V1.3**. Supported V1.3/V1.4-era installations can use their legacy updater and `BRIDGE_COMPATIBILITY.json` to update the **Bridge directly to V1.42**. Once Bridge V1.42 is installed, run `UPDATE_DUALSENSE.exe` to download the matching BeamNG mod ZIP and follow the manual installation instructions.
+
+V1.41 installations already use the unified updater and can update normally to V1.42.
 
 ---
 

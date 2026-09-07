@@ -1,0 +1,10 @@
+Enhanced PS5 DualSense Haptics
+LEGACY UPDATE MIGRATION INSTRUCTIONS
+
+1. Let the current UPDATE_BRIDGE.exe finish installing the compatible Bridge release.
+2. If the Bridge opens again, close the Bridge window.
+3. Run UPDATE_DUALSENSE.exe from the Bridge folder.
+4. Close BeamNG.drive if it is open.
+5. Confirm the update in UPDATE_DUALSENSE.exe.
+6. Follow the BeamNG installation tutorial that opens after the update.
+7. Install the matching Enhanced_PS5_DualSense_Haptics_Vx.xx.zip in your BeamNG mods folder without extracting it.

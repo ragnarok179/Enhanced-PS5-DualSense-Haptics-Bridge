@@ -50,11 +50,6 @@ type updaterOptions struct {
 }
 
 var manifestLine = regexp.MustCompile(`^([0-9a-fA-F]{64})\s+\./(.+)$`)
-var compatibilityOnlyFiles = map[string]struct{}{
-	normalizeRelative(`START_BRIDGE.bat`):                                {},
-	normalizeRelative(`UPDATE_BRIDGE.bat`):                               {},
-	normalizeRelative(`Tools and diagnostics\Updater\Update-Bridge.ps1`): {},
-}
 
 func main() {
 	if len(os.Args) >= 3 && os.Args[1] == "--worker" {
@@ -301,7 +296,7 @@ func runLegacyWorker(installRoot string, o updaterOptions) int {
 		return 1
 	}
 
-	managed := withoutCompatibilityFiles(remote)
+	managed := remote
 	localManifestPath := filepath.Join(installRoot, manifestName)
 	local := map[string]string{}
 	if fileExists(localManifestPath) {
@@ -546,17 +541,6 @@ func relaunchBridge(root string) error {
 	return cmd.Start()
 }
 
-func withoutCompatibilityFiles(manifest map[string]string) map[string]string {
-	filtered := make(map[string]string, len(manifest))
-	for path, hash := range manifest {
-		if _, compatibilityOnly := compatibilityOnlyFiles[normalizeRelative(path)]; compatibilityOnly {
-			continue
-		}
-		filtered[path] = hash
-	}
-	return filtered
-}
-
 func compareInstallation(installRoot string, remote, local map[string]string) ([]string, []string, []string, error) {
 	var newFiles, changedFiles, removedFiles []string
 	removedSet := map[string]struct{}{}
@@ -586,13 +570,6 @@ func compareInstallation(installRoot string, remote, local map[string]string) ([
 		}
 	}
 
-	// Remove repository-only migration scripts even if a local manifest from a
-	// manually assembled package did not list them.
-	for relative := range compatibilityOnlyFiles {
-		if fileExists(filepath.Join(installRoot, relative)) {
-			removedSet[relative] = struct{}{}
-		}
-	}
 	for relative := range removedSet {
 		removedFiles = append(removedFiles, relative)
 	}
@@ -663,9 +640,7 @@ func installUpdate(installRoot, remoteRoot, backupRoot, localManifestPath string
 		}
 	}
 
-	// Write the modern local manifest without the repository-only V1.1
-	// compatibility scripts. This allows the EXE updater to remove those scripts
-	// after a successful migration while the repository can keep them for old users.
+	// Write the local manifest last so an interrupted update never looks complete.
 	if err := writeManifest(localManifestPath, remote); err != nil {
 		rollback()
 		return fmt.Errorf("unable to write the installed checksum manifest: %w", err)

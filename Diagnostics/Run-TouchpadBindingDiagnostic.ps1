@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$release = 'V1.42'
 
 $diagnosticsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $diagnosticsDir
@@ -14,13 +15,13 @@ $logDir = Join-Path $diagnosticsDir 'Logs'
 if ($Mode -eq 'USB') {
     $exePath = Join-Path $bridgeDir 'EnhancedPS5DualSenseHapticsUSB.exe'
     $bridgeArgs = @('--diagnostic-touchpad-binding')
-    $logPrefix = 'TOUCHPAD_BINDING_USB'
-    $title = 'DualSense touchpad / BeamNG binding diagnostic - USB'
+    $logPrefix = 'TOUCHPAD_BINDING_USB_' + $release
+    $title = 'Enhanced PS5 DualSense Haptics ' + $release + ' - touchpad / BeamNG binding diagnostic - USB'
 } else {
     $exePath = Join-Path $bridgeDir 'EnhancedPS5DualSenseHapticsBluetooth.exe'
     $bridgeArgs = @('--diagnostic-touchpad-binding')
-    $logPrefix = 'TOUCHPAD_BINDING_BLUETOOTH'
-    $title = 'DualSense touchpad / BeamNG binding diagnostic - Bluetooth'
+    $logPrefix = 'TOUCHPAD_BINDING_BLUETOOTH_' + $release
+    $title = 'Enhanced PS5 DualSense Haptics ' + $release + ' - touchpad / BeamNG binding diagnostic - Bluetooth'
 }
 
 if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
@@ -36,6 +37,7 @@ $logPath = Join-Path $logDir ($logPrefix + '_' + $stamp + '.log')
 $header = @(
     $title,
     ('-' * $title.Length),
+    ('Release: ' + $release),
     ('Started: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')),
     ('Executable: ' + $exePath),
     ('Arguments: ' + ($bridgeArgs -join ' ')),

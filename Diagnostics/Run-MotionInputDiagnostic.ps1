@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$release = 'V1.42'
 
 $diagnosticsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $diagnosticsDir
@@ -14,13 +15,13 @@ $logDir = Join-Path $diagnosticsDir 'Logs'
 if ($Mode -eq 'USB') {
     $exePath = Join-Path $bridgeDir 'EnhancedPS5DualSenseHapticsUSB.exe'
     $bridgeArgs = @('--test-motion-inputs')
-    $logPrefix = 'MOTION_INPUTS_USB'
-    $title = 'DualSense gyro / accelerometer diagnostic - USB'
+    $logPrefix = 'MOTION_INPUTS_USB_' + $release
+    $title = 'Enhanced PS5 DualSense Haptics ' + $release + ' - gyro / accelerometer diagnostic - USB'
 } else {
     $exePath = Join-Path $bridgeDir 'EnhancedPS5DualSenseHapticsBluetooth.exe'
     $bridgeArgs = @('--test-motion-inputs')
-    $logPrefix = 'MOTION_INPUTS_BLUETOOTH'
-    $title = 'DualSense gyro / accelerometer diagnostic - Bluetooth'
+    $logPrefix = 'MOTION_INPUTS_BLUETOOTH_' + $release
+    $title = 'Enhanced PS5 DualSense Haptics ' + $release + ' - gyro / accelerometer diagnostic - Bluetooth'
 }
 
 if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
@@ -36,6 +37,7 @@ $logPath = Join-Path $logDir ($logPrefix + '_' + $stamp + '.log')
 $header = @(
     $title,
     ('-' * $title.Length),
+    ('Release: ' + $release),
     ('Started: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')),
     ('Executable: ' + $exePath),
     ('Arguments: ' + ($bridgeArgs -join ' ')),

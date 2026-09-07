@@ -1,16 +1,15 @@
 # BeamNG wire generations
 
-The project used explicit gameplay protocol generations while the BeamNG mod and Bridge were distributed and updated separately.
+The supported legacy migration floor is Bridge/Mod V1.3.
 
-| Generation | Historical release | Purpose in V1.41 |
+| Generation | Historical origin | Purpose in V1.42 |
 | ---: | --- | --- |
-| 40 | V1.0 | Legacy migration support |
-| 41 | V1.1 | Legacy migration support |
-| 42 | V1.2 | Legacy migration support |
-| 43 | V1.41 | One-time migration generation |
+| 41 | V1.1 | Retained because the supported V1.3 generation still uses protocol 41 |
+| 42 | V1.2 | Retained for later pre-V1.41 releases such as V1.4 |
+| 43 | V1.41 | Unified wire generation used by V1.41 and V1.42 |
 
-Bridge V1.41 accepts generations 40-43 so older public installations can reach the unified V1.41 release.
+Versions older than V1.3 are intentionally outside the supported migration range even when they share an older wire generation. `BRIDGE_COMPATIBILITY.json` uses `modMin`/`modMax` in addition to protocol numbers so V1.1/V1.2 are not selected accidentally.
 
-From V1.41 onward, normal update compatibility is release-based: the BeamNG mod and Bridge use the same project version and `UPDATE_DUALSENSE.exe` requires both matching assets from one complete GitHub Release, updates the Bridge and stages the BeamNG mod ZIP for manual installation. Wire generations are no longer incremented merely because a project release number changes.
+Supported V1.3 and V1.4-era installations use the compatibility index to reach Bridge V1.42 directly. Once Bridge V1.42 is installed, `UPDATE_DUALSENSE.exe` selects the matching complete release, verifies both assets and stages the BeamNG mod ZIP for manual installation. V1.41 onward also uses this unified updater path normally.
 
-A future wire-format breaking change may still introduce a new schema/generation if technically necessary, but that is separate from normal release versioning.
+Wire generations are not incremented merely because a project release number changes. A future wire-format breaking change may introduce a new schema/generation if technically necessary.

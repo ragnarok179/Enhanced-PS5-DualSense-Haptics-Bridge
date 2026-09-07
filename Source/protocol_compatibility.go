@@ -85,7 +85,7 @@ func (g *protocolCompatibilityGuard) handlePacket(data []byte, diagnostics bool,
 			fmt.Println("4. Confirm the update in UPDATE_DUALSENSE.exe.")
 			fmt.Println("5. Follow the installation tutorial that opens after the update.")
 			fmt.Println()
-			fmt.Println("You can also open IMPORTANT_V1.41_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt for these steps.")
+			fmt.Println("You can also open IMPORTANT_GUIDE_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt for these steps.")
 		})
 		return false
 	}

@@ -3,11 +3,11 @@
 ## Data flow
 
 ```text
-BeamNG.drive Mod V1.0 / V1.1 / V1.2
+Supported legacy BeamNG Mods V1.3 / V1.4, then V1.41+
     |
-    | localhost gameplay telemetry (protocol 40 / 41 / 42)
+    | localhost gameplay telemetry (protocol 41 / 42 / 43)
     v
-Multi-version telemetry decoder
+Supported telemetry decoder
     v
 Common Feel Engine
     |-- adaptive triggers
@@ -39,10 +39,17 @@ USB WASAPI speaker       Bluetooth 512-sample mix tick
 
 BeamNG owns DualSense RGB/RPM lighting on both transports.
 
+## Update routing
+
+- Supported legacy migration starts at **V1.3**.
+- Legacy **V1.3** and **V1.4-era** updaters can select **Bridge V1.42 directly** through `BRIDGE_COMPATIBILITY.json`.
+- Once Bridge V1.42 is installed, `UPDATE_DUALSENSE.exe` downloads the matching BeamNG mod ZIP and guides the manual BeamNG installation.
+- `V1.41 -> V1.42` also uses `UPDATE_DUALSENSE.exe`.
+
 ## Source responsibilities
 
-- `protocol.go`: supported gameplay compatibility generations.
-- `telemetry.go`: protocol 40/41/42 decoding and normalization.
+- `protocol.go`: supported gameplay compatibility generations (41-43).
+- `telemetry.go`: protocol 41/42/43 decoding and normalization.
 - `protocol_compatibility.go`: runtime update guard.
 - `common_feel_engine.go`: transport-neutral orchestration.
 - `gameplay_effects.go`: surfaces, ABS/TCS, throttle logic and gameplay cues.
@@ -70,3 +77,4 @@ BeamNG owns DualSense RGB/RPM lighting on both transports.
 9. Bluetooth output calibration is transport-level and does not alter BeamNG event strength.
 10. BeamNG audio assets are read locally and never redistributed.
 11. User-owned settings are never overwritten by the updater.
+12. V1.3 is the oldest supported migration release. Protocols 41 and 42 remain only where needed for V1.3/V1.4 migration.
