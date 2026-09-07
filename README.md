@@ -4,7 +4,6 @@
 
 Designed to be simple and automatic, the mod **does NOT require DSX or DS4Windows.** It uses a **lightweight dedicated Bridge** made specifically for BeamNG, which communicates directly with the DualSense and automatically handles **USB or Bluetooth**.
 
----
 
 ## Main features
 
@@ -46,8 +45,6 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
 - **Local Split Screen compatibility:**
   - Designed to work alongside the **Local Split Screen** mod for multi-controller local play.
 
----
-
 
 # Installation
 
@@ -81,7 +78,6 @@ Open the mod settings using the default shortcut: **O**
 
 Or manually through: **Pause > Mods > DualSense Haptics Settings**
 
----
 
 ## Binding an input
 
@@ -95,7 +91,6 @@ Touchpad, motion and accelerometer inputs all use the same binding workflow:
 
 Once configured, BeamNG can save it like any other controller binding.
 
----
 
 # Touchpad
 
@@ -121,7 +116,6 @@ Each horizontal or vertical channel can be configured independently for one- or 
 - **Relative**: creates an analog axis relative to where the gesture started; suited to steering, camera movement or other centered controls.
 - **Absolute**: maps the finger's physical position on the touchpad directly to an analog axis.
 
----
 
 # Motion
 
@@ -146,7 +140,6 @@ Motion inputs can generally be exposed as:
 
 Modes that use a center reference can be recentered directly from the mod settings.
 
----
 
 # Accelerometer
 
@@ -158,7 +151,6 @@ Each direction can be configured as:
 - **Axis**: outputs a continuous analog value.
 - **Button**: triggers a BeamNG action when acceleration exceeds the configured threshold.
 
----
 
 # Troubleshooting
 
@@ -170,7 +162,6 @@ Each direction can be configured as:
 - Updating the DualSense firmware through PlayStation Accessories is recommended.
 - Run `UPDATE_DUALSENSE.exe` to check for updates and follow the displayed instructions.
 
----
 
 # Architecture
 
@@ -250,16 +241,12 @@ BeamNG
 - Controller-speaker collision audio is triggered only by **exact BeamNG sound calls**. The Bridge reads the matching BeamNG audio assets locally and does not synthesize replacement collision events.
 - All Mod ↔ Bridge communication is local to `127.0.0.1`.
 
----
 
 # Updates
 
 Run `UPDATE_DUALSENSE.exe` to check for updates and follow the displayed instructions.
 
 The updater keeps the Bridge and BeamNG mod synchronized and guides you through any required installation steps.
-
----
----
 
 
 # Feedback, suggestions and bug reports
@@ -272,7 +259,6 @@ The BeamNG forum thread can also be used for discussion, troubleshooting and sug
 
 [**Enhanced PS5 DualSense Haptics — BeamNG forum thread**](https://www.beamng.com/threads/enhanced-ps5-dualsense-haptics-feedback-support-suggestions.111320/)
 
----
 
 # License
 
