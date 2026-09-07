@@ -35,9 +35,9 @@ func run() int {
 	launchBeamNG := strings.Contains(launcherName, "AND_BEAMNG")
 
 	if launchBeamNG {
-		fmt.Println("Enhanced PS5 DualSense Bridge", buildinfo.DisplayVersion, "- starting BeamNG.drive")
+		fmt.Println("Enhanced PS5 DualSense Bridge", buildinfo.DisplayVersion, "- starting BeamNG")
 		if err := exec.Command("explorer.exe", beamNGSteamURL).Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: unable to launch BeamNG.drive through Steam: %v\n", err)
+			fmt.Fprintf(os.Stderr, "ERROR: unable to launch BeamNG through Steam: %v\n", err)
 			return 3
 		}
 		time.Sleep(time.Second)

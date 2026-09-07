@@ -242,7 +242,7 @@ func main() {
 	if diagnosticStatus {
 		fmt.Println("DIAG telemetry UDP", telemetryAddress)
 	}
-	fmt.Println("Waiting for BeamNG.drive...")
+	fmt.Println("Waiting for BeamNG...")
 
 	mixer := newCanonicalHapticMixer()
 	engine := newSharedFeelEngine(mixer)

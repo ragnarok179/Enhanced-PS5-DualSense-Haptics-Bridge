@@ -296,10 +296,10 @@ func telemetryCompatibilityError(data []byte) string {
 func telemetryConnectionSummary(t telemetry) string {
 	mod := strings.TrimSpace(t.ModVersion)
 	if mod == "" {
-		return fmt.Sprintf("BeamNG.drive connected - legacy mod - wire generation %d.", t.Version)
+		return fmt.Sprintf("BeamNG connected - legacy mod - wire generation %d.", t.Version)
 	}
 	if compatibility.CompareVersions(mod, bridgeDisplayVersion) == 0 {
-		return fmt.Sprintf("BeamNG.drive connected - release %s synchronized.", bridgeDisplayVersion)
+		return fmt.Sprintf("BeamNG connected - release %s synchronized.", bridgeDisplayVersion)
 	}
-	return fmt.Sprintf("BeamNG.drive connected - mod %s / Bridge %s.", mod, bridgeDisplayVersion)
+	return fmt.Sprintf("BeamNG connected - mod %s / Bridge %s.", mod, bridgeDisplayVersion)
 }

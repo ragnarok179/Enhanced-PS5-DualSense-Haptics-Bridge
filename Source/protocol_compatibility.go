@@ -81,7 +81,7 @@ func (g *protocolCompatibilityGuard) handlePacket(data []byte, diagnostics bool,
 			fmt.Println("============================================================")
 			fmt.Println("1. Close this Bridge window.")
 			fmt.Println("2. Run UPDATE_DUALSENSE.exe from the Bridge folder.")
-			fmt.Println("3. Close BeamNG.drive if it is open.")
+			fmt.Println("3. Close BeamNG if it is open.")
 			fmt.Println("4. Confirm the update in UPDATE_DUALSENSE.exe.")
 			fmt.Println("5. Follow the installation tutorial that opens after the update.")
 			fmt.Println()

@@ -133,7 +133,7 @@ func main() {
 		os.Exit(2)
 	}
 	defer conn.Close()
-	fmt.Println("Waiting for BeamNG.drive...")
+	fmt.Println("Waiting for BeamNG...")
 
 	mixer := newCanonicalHapticMixer()
 	done := make(chan struct{})

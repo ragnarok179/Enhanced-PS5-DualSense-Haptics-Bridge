@@ -74,7 +74,7 @@ func newNativeBeamNGSampleEngine(transport string) *nativeBeamNGSampleEngine {
 func (n *nativeBeamNGSampleEngine) initialize() {
 	beamng := locateBeamNGForNativeSamples()
 	if beamng == "" {
-		n.failInit("BeamNG.drive installation not found")
+		n.failInit("BeamNG installation not found")
 		return
 	}
 	n.beamngPath = beamng

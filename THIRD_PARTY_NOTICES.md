@@ -34,8 +34,8 @@ https://github.com/awalol/DS5Dongle
 Protocol reference only. The referenced `audio.cpp` source declares Mozilla Public License 2.0.
 Used to verify the Bluetooth report `0x36` layout, SetStateData block, haptic payload, counters and wireless state. No DS5Dongle source is redistributed.
 
-## BeamNG.drive FFmpeg runtime interoperability
+## BeamNG FFmpeg runtime interoperability
 
-The Bluetooth controller-speaker path can dynamically load the FFmpeg libraries already installed by the user's own BeamNG.drive copy (`Bin64/VideoStream/avcodec-62.dll` and `avutil-60.dll`) to encode locally decoded BeamNG collision PCM as Opus.
+The Bluetooth controller-speaker path can dynamically load the FFmpeg libraries already installed by the user's own BeamNG copy (`Bin64/VideoStream/avcodec-62.dll` and `avutil-60.dll`) to encode locally decoded BeamNG collision PCM as Opus.
 
 The project does **not** redistribute BeamNG audio assets or BeamNG's FFmpeg binaries. Those files remain part of the user's local BeamNG installation.
