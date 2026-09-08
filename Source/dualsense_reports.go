@@ -157,7 +157,6 @@ func rgbDistance(a, b [3]byte) int {
 type lightbarController struct {
 	stage         int // 0=off, 1=progressive, 2=solid red
 	lastColor     [3]byte
-	enabled       bool
 	rpmActive     bool
 	belowOffSince time.Time
 	limiterUntil  time.Time
@@ -192,17 +191,18 @@ func (c *lightbarController) update(t telemetry, now time.Time) [3]byte {
 		c.stage = 0
 		c.rpmActive = false
 		c.belowOffSince = time.Time{}
-		c.enabled = false
 		c.limiterUntil = time.Time{}
 		c.blinkActive = false
 		c.lastColor = black
 		return black
 	}
 
-	if t.ShiftLEDsInUse && !c.enabled {
-		c.enabled = true
-	}
-	if !c.enabled {
+	lightingEnabled, brightness := currentLightingSettings()
+	if !lightingEnabled || brightness <= 0 {
+		c.stage = 0
+		c.rpmActive = false
+		c.belowOffSince = time.Time{}
+		c.limiterUntil = time.Time{}
 		c.blinkActive = false
 		c.lastColor = black
 		return black
@@ -250,6 +250,8 @@ func (c *lightbarController) update(t telemetry, now time.Time) [3]byte {
 	if !cfg.BlinkOnlyOnRevLimiter && ratio >= 0.985 {
 		blink = true
 	}
+
+	var rgb [3]byte
 	if blink {
 		c.blinkActive = true
 		hz := math.Max(1, cfg.BlinkHz)
@@ -258,16 +260,19 @@ func (c *lightbarController) update(t telemetry, now time.Time) [3]byte {
 			c.lastColor = black
 			return black
 		}
-		red := [3]byte{byte(clampInt(cfg.MaxBrightness, 0, 255)), 0, 0}
-		c.lastColor = red
-		return red
+		rgb = [3]byte{byte(clampInt(cfg.MaxBrightness, 0, 255)), 0, 0}
+	} else {
+		c.blinkActive = false
+		if ratio < cfg.FirstRatio && c.lastColor != black {
+			rgb = c.lastColor
+		} else {
+			rgb = steadyRPMRGB(math.Max(ratio, cfg.FirstRatio))
+		}
 	}
-	c.blinkActive = false
 
-	if ratio < cfg.FirstRatio && c.lastColor != black {
-		return c.lastColor
+	if brightness < 0.999 {
+		rgb = scaleRGB(rgb, brightness)
 	}
-	rgb := steadyRPMRGB(math.Max(ratio, cfg.FirstRatio))
 	c.lastColor = rgb
 	return rgb
 }

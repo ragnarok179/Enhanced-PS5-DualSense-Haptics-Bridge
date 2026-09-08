@@ -3,8 +3,9 @@ package main
 import "time"
 
 // sharedFeelFrame is the transport-independent output of the Common Feel Engine.
-// A USB adapter consumes Control/RGB plus stereo Samples through HID + WASAPI;
-// the Bluetooth adapter packs the same frame into the all-in-one 0x36 report.
+// USB and Bluetooth consume the same trigger/haptic state. RGB is still
+// calculated here for diagnostics/reference, while physical lighting remains
+// owned by the BeamNG mod to avoid competing lightbar writers.
 type sharedFeelFrame struct {
 	Control   telemetry
 	RGB       [3]byte

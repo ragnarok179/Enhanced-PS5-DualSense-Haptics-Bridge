@@ -24,6 +24,10 @@ type userSettings struct {
 		R2ThrottlePercent int `json:"r2_throttle_percent"`
 		R2EffectsPercent  int `json:"r2_effects_percent"`
 	} `json:"adaptive_triggers"`
+	Lighting struct {
+		Enabled           bool `json:"enabled"`
+		BrightnessPercent int  `json:"brightness_percent"`
+	} `json:"lighting"`
 }
 
 var userSettingsState struct {
@@ -43,6 +47,8 @@ func defaultUserSettings() userSettings {
 	s.AdaptiveTriggers.ABSPercent = 100
 	s.AdaptiveTriggers.R2ThrottlePercent = 100
 	s.AdaptiveTriggers.R2EffectsPercent = 100
+	s.Lighting.Enabled = true
+	s.Lighting.BrightnessPercent = 100
 	return s
 }
 
@@ -67,6 +73,7 @@ func normalizeUserSettings(s userSettings) userSettings {
 	s.AdaptiveTriggers.ABSPercent = clampPercent(s.AdaptiveTriggers.ABSPercent)
 	s.AdaptiveTriggers.R2ThrottlePercent = clampPercent(s.AdaptiveTriggers.R2ThrottlePercent)
 	s.AdaptiveTriggers.R2EffectsPercent = clampPercent(s.AdaptiveTriggers.R2EffectsPercent)
+	s.Lighting.BrightnessPercent = clampInt(s.Lighting.BrightnessPercent, 0, 100)
 	return s
 }
 
@@ -236,6 +243,20 @@ func scaleFineStrength(v, percent int) int {
 	return clampInt(int(math.Round(float64(v)*percentGain(percent))), 0, 48)
 }
 
+func currentLightingSettings() (bool, float64) {
+	s := currentUserSettings()
+	return s.Lighting.Enabled, float64(clampInt(s.Lighting.BrightnessPercent, 0, 100)) / 100.0
+}
+
+func scaleRGB(rgb [3]byte, gain float64) [3]byte {
+	gain = clamp(gain, 0, 1)
+	return [3]byte{
+		byte(clampInt(int(math.Round(float64(rgb[0])*gain)), 0, 255)),
+		byte(clampInt(int(math.Round(float64(rgb[1])*gain)), 0, 255)),
+		byte(clampInt(int(math.Round(float64(rgb[2])*gain)), 0, 255)),
+	}
+}
+
 func applyUserHapticMaster(samples []int8) {
 	if len(samples) == 0 {
 		return
@@ -309,6 +330,8 @@ func applyBeamNGUserSettings(remote telemetryUserSettings) {
 	next := currentUserSettings()
 
 	if remote.Schema >= 11 {
+		next.Lighting.Enabled = remote.LightingEnabled
+		next.Lighting.BrightnessPercent = strength255ToPercent(remote.LightingBrightness)
 		// V1.1/V1.2 settings packets use absolute 0..255 haptic strengths and
 		// a 0..48 trigger-force lattice. The semantic l2Effect/r2Effect packet
 		// already contains the chosen normal trigger forces, so the legacy
@@ -367,8 +390,9 @@ func applyBeamNGUserSettings(remote telemetryUserSettings) {
 
 func userSettingsSummary() string {
 	s := currentUserSettings()
-	return fmt.Sprintf("haptics=%d%% surface=%d%% impacts=%d%% L2=%d%% ABS=%d%% R2=%d%% effects=%d%%",
+	return fmt.Sprintf("haptics=%d%% surface=%d%% impacts=%d%% L2=%d%% ABS=%d%% R2=%d%% effects=%d%% lights=%d%%",
 		s.Haptics.MasterPercent, s.Haptics.SurfacePercent, s.Haptics.ImpactPercent,
 		s.AdaptiveTriggers.L2BrakePercent, s.AdaptiveTriggers.ABSPercent,
-		s.AdaptiveTriggers.R2ThrottlePercent, s.AdaptiveTriggers.R2EffectsPercent)
+		s.AdaptiveTriggers.R2ThrottlePercent, s.AdaptiveTriggers.R2EffectsPercent,
+		map[bool]int{true: s.Lighting.BrightnessPercent, false: 0}[s.Lighting.Enabled])
 }

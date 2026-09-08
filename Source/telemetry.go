@@ -128,7 +128,7 @@ type telemetry struct {
 	LegacyCompat   bool                   `json:"legacyCompat"`
 	Active         bool                   `json:"active"`
 	Seq            int                    `json:"seq"`
-	ShiftLEDsInUse bool                   `json:"shiftLEDsInUse"`
+	ShiftLEDsInUse bool                   `json:"shiftLEDsInUse"` // legacy compatibility hint; current RPM lighting ignores it
 	UserSettings   *telemetryUserSettings `json:"userSettings"`
 	L2Effect       *triggerEffectWire     `json:"l2Effect"`
 	R2Effect       *triggerEffectWire     `json:"r2Effect"`

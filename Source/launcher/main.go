@@ -11,7 +11,12 @@ import (
 	"github.com/Ragnarok179/enhanced-ps5-dualsense-haptics-bridge/internal/buildinfo"
 )
 
-const beamNGSteamURL = "steam://rungameid/284160"
+const (
+	beamNGSteamURL                     = "steam://rungameid/284160"
+	launcherExitControllerDisconnected = 10
+	launcherExitTransportNotReady      = 11
+	controllerSearchInterval           = time.Second
+)
 
 func main() {
 	code := run()
@@ -56,28 +61,51 @@ func run() int {
 		return 2
 	}
 
-	// Start each transport at most once. Older launchers spawned a probe process
-	// and then restarted the selected Bridge, which made cold starts noticeably
-	// slower on Windows/Defender. --launcher-auto exits 1 silently only when the
-	// requested transport is absent; otherwise that same process becomes runtime.
-	usbCode := runBridge(usbPath, bridgeDir, "--launcher-auto")
-	if usbCode != 1 {
-		return usbCode
-	}
-	btCode := runBridge(bluetoothPath, bridgeDir, "--launcher-auto")
-	if btCode != 1 {
-		return btCode
+	// START_BRIDGE owns controller discovery for the whole session. Every child
+	// receives --launcher-auto plus any optional diagnostic/test arguments.
+	// A disconnect or a transport that is still coming online is a retry state,
+	// not a fatal error. This keeps one terminal alive across USB/Bluetooth swaps.
+	childArgs := make([]string, 0, len(os.Args))
+	childArgs = append(childArgs, "--launcher-auto")
+	for _, arg := range os.Args[1:] {
+		if arg != "--launcher-auto" {
+			childArgs = append(childArgs, arg)
+		}
 	}
 
-	fmt.Fprintln(os.Stderr, "ERROR: no compatible DualSense controller was detected over USB or Bluetooth.")
+	waitingPrinted := false
+	for {
+		usbCode := runBridge(usbPath, bridgeDir, childArgs...)
+		switch usbCode {
+		case 0:
+			return 0
+		case launcherExitControllerDisconnected:
+			waitingPrinted = false
+		case 1, launcherExitTransportNotReady:
+			// USB is absent or Windows has not finished exposing all of its
+			// controller endpoints yet. Try Bluetooth, then scan again.
+		default:
+			return usbCode
+		}
 
-	diagnosticPath := filepath.Join(root, "Diagnostics", "LIST_HARDWARE.bat")
-	if fileExists(diagnosticPath) {
-		fmt.Fprintf(os.Stderr, "Hardware diagnostics: %s\n", diagnosticPath)
-	} else {
-		fmt.Fprintln(os.Stderr, "ERROR: the hardware diagnostics file is missing. Reinstall or update the Bridge.")
+		btCode := runBridge(bluetoothPath, bridgeDir, childArgs...)
+		switch btCode {
+		case 0:
+			return 0
+		case launcherExitControllerDisconnected:
+			waitingPrinted = false
+		case 1, launcherExitTransportNotReady:
+			// Bluetooth is absent or still initializing; wait and scan again.
+		default:
+			return btCode
+		}
+
+		if !waitingPrinted {
+			fmt.Println("Waiting for a DualSense controller...")
+			waitingPrinted = true
+		}
+		time.Sleep(controllerSearchInterval)
 	}
-	return 1
 }
 
 func fileExists(path string) bool {
@@ -136,14 +164,17 @@ func runBridge(path, workingDirectory string, args ...string) int {
 	}
 	if exitError, ok := err.(*exec.ExitError); ok {
 		code := exitError.ExitCode()
-		if code == 1 {
-			for _, arg := range args {
-				if arg == "--launcher-auto" {
-					return 1
-				}
+		launcherAuto := false
+		for _, arg := range args {
+			if arg == "--launcher-auto" {
+				launcherAuto = true
+				break
 			}
 		}
-		fmt.Fprintln(os.Stderr, "\nThe Bridge stopped unexpectedly. Run the hardware diagnostics if the problem continues.")
+		if launcherAuto && (code == 1 || code == launcherExitControllerDisconnected || code == launcherExitTransportNotReady) {
+			return code
+		}
+		fmt.Fprintln(os.Stderr, "\nThe Bridge stopped unexpectedly. Run Diagnostics\\RUN_DIAGNOSTIC.bat if the problem continues.")
 		return code
 	}
 

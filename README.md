@@ -63,7 +63,7 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
 
 - The Bridge can be launched before or after BeamNG, as long as the DualSense is connected to the PC.
 - No specific launch order is required.
-- If you disconnect the DualSense or switch between USB and Bluetooth, reconnect the controller and restart the Bridge.
+- If the DualSense is disconnected, the Bridge stays open and waits for it. Reconnecting through USB or Bluetooth is detected automatically.
 
 #### Compatibility
 
@@ -180,6 +180,8 @@ BeamNG
 ├─ GE Lua
 │  ├─ dualsenseCollisionSoundProbeGE.lua
 │  ├─ dualsenseControllerSpeaker.lua
+│  ├─ dualsensePhysicsDirectRPMLights.lua
+│  │  └─ engine RPM / rev-limiter lighting ──► DualSense RGB
 │  ├─ touchpad / settings / status channel ── UDP 127.0.0.1:6978 ──► Bridge
 │  │
 │  ├─ dualsenseExtendedInputs.lua ◄────────── UDP 127.0.0.1:6977 ── Bridge
@@ -187,9 +189,6 @@ BeamNG
 │  ├─ dualsenseSuite/virtualInputDevice.lua
 │  │  └─ one BeamNG virtual device for touchpad + motion bindings
 │  │
-│  └─ dualsensePhysicsDirectRPMLights.lua
-│     └─ BeamNG-owned DualSense RGB / RPM lighting
-│
 └─────────────────────────────────────────────────────────────────────────────
                                       │
                                       ▼

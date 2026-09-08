@@ -201,6 +201,14 @@ func TestRPMLEDBlinksOnlyAtLimiter(t *testing.T) {
 	}
 }
 
+func TestRPMLEDIgnoresShiftLEDHint(t *testing.T) {
+	c := &lightbarController{}
+	state := telemetry{Active: true, ShiftLEDsInUse: false, Raw: &rawTelemetry{EngineRunning: true, RPM: 5200, MaxRPM: 7000}}
+	if got := c.update(state, time.Unix(1000, 0)); got == ([3]byte{}) {
+		t.Fatal("RPM lighting must not depend on gearbox/native shift LED hints")
+	}
+}
+
 func TestSharedRPMLEDThresholds(t *testing.T) {
 	c := &lightbarController{}
 	base := time.Unix(2000, 0)

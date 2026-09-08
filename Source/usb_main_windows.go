@@ -18,9 +18,8 @@ import (
 const usbTelemetryAddress = "127.0.0.1:6972"
 
 // The DualSense audio-haptic endpoint is rendered through WASAPI, but the
-// controller also has a HID state path for triggers/lightbar. Keeping that HID
-// path alive independently of LED changes prevents the audio-haptic route from
-// becoming perceptually dormant while RGB and triggers stay constant.
+// controller also has a HID state path for adaptive triggers and speaker state.
+// Keep that path alive independently of trigger changes while BeamNG owns RGB.
 const usbHIDKeepAliveInterval = 25 * time.Millisecond
 
 func buildUSBSharedStateReport(d *device, t telemetry, _ [3]byte) []byte {
@@ -31,7 +30,7 @@ func buildUSBSharedStateReport(d *device, t telemetry, _ [3]byte) []byte {
 	report := make([]byte, length)
 	report[0] = 0x02
 	common := report[1:48]
-	// Same rule as the validated USB HD bridge: update only R2/L2 and lightbar.
+	// Update only R2/L2 and speaker state. BeamNG owns the lightbar.
 	// Never set HAPTICS_SELECT/COMPATIBLE_VIBRATION while WASAPI owns the grips.
 	common[0] = 0x0C
 	common[1] = 0x00
@@ -58,19 +57,22 @@ func mustUSBAddr(s string) *net.UDPAddr {
 	return a
 }
 
-func runUSBSharedStereoTest(audio *hapticAudioEngine, d *device) {
+func runUSBSharedStereoTest(audio *hapticAudioEngine, d *device) error {
 	if audio == nil {
-		return
+		return fmt.Errorf("USB haptic audio is unavailable")
 	}
 	audio.EnableSharedPCM()
 	neutral := telemetry{Version: protocolVersion, Active: false}
 	lastKeepAlive := time.Time{}
-	keepAlive := func() {
+	keepAlive := func() error {
 		now := time.Now()
 		if lastKeepAlive.IsZero() || now.Sub(lastKeepAlive) >= usbHIDKeepAliveInterval {
-			_ = d.writeReport(buildUSBSharedStateReport(d, neutral, [3]byte{}))
+			if err := d.writeReport(buildUSBSharedStateReport(d, neutral, [3]byte{})); err != nil {
+				return err
+			}
 			lastKeepAlive = now
 		}
+		return nil
 	}
 	mk := func(l, r int8) []int8 {
 		out := make([]int8, 64)
@@ -81,29 +83,42 @@ func runUSBSharedStereoTest(audio *hapticAudioEngine, d *device) {
 	}
 	fmt.Println("Left grip test...")
 	for i := 0; i < 85; i++ {
-		keepAlive()
+		if err := keepAlive(); err != nil {
+			return err
+		}
 		audio.PushSharedSamples(mk(72, 0), bluetoothHapticSampleRate)
 		time.Sleep(10 * time.Millisecond)
 	}
 	time.Sleep(300 * time.Millisecond)
 	fmt.Println("Right grip test...")
 	for i := 0; i < 85; i++ {
-		keepAlive()
+		if err := keepAlive(); err != nil {
+			return err
+		}
 		audio.PushSharedSamples(mk(0, 72), bluetoothHapticSampleRate)
 		time.Sleep(10 * time.Millisecond)
 	}
 	time.Sleep(300 * time.Millisecond)
 	fmt.Println("Center test...")
 	for i := 0; i < 85; i++ {
-		keepAlive()
+		if err := keepAlive(); err != nil {
+			return err
+		}
 		audio.PushSharedSamples(mk(56, 56), bluetoothHapticSampleRate)
 		time.Sleep(10 * time.Millisecond)
 	}
 	fmt.Println("Test complete.")
+	return nil
 }
 
 func main() {
 	runtime.LockOSThread()
+	launcherExitCode := 0
+	defer func() {
+		if launcherExitCode != 0 {
+			os.Exit(launcherExitCode)
+		}
+	}()
 	endRealtime := enableRealtimeScheduling()
 	defer endRealtime()
 	probe, launcherAuto, listAudio, showProfile, testStereo, testExtendedInputs, testMotionInputs, testTouchpadMouse, diagnosticStatus, diagnosticTouchpadBinding := false, false, false, false, false, false, false, false, false, false
@@ -186,18 +201,38 @@ func main() {
 		return
 	}
 	if testExtendedInputs {
-		os.Exit(runExtendedInputDiagnostic(d))
+		code := runExtendedInputDiagnostic(d)
+		if launcherAuto && code == 3 {
+			os.Exit(launcherExitControllerDisconnected)
+		}
+		os.Exit(code)
 	}
 	if testMotionInputs {
-		os.Exit(runMotionInputDiagnostic(d))
+		code := runMotionInputDiagnostic(d)
+		if launcherAuto && code == 3 {
+			os.Exit(launcherExitControllerDisconnected)
+		}
+		os.Exit(code)
 	}
 	if testTouchpadMouse {
-		os.Exit(runTouchpadMouseDiagnostic(d))
+		code := runTouchpadMouseDiagnostic(d)
+		if launcherAuto && code == 3 {
+			os.Exit(launcherExitControllerDisconnected)
+		}
+		os.Exit(code)
 	}
 
 	ensureUserSettings()
 	audio, details, err := openHapticAudioEngine(preferredAudio)
 	if err != nil || audio == nil {
+		// Immediately after an USB reconnect, Windows can expose the HID
+		// interface before the GameInput/WASAPI haptic endpoint is ready.
+		// Under START_BRIDGE this is a transient discovery state: return to
+		// the launcher so it can keep scanning USB and Bluetooth instead of
+		// stopping the user-facing terminal.
+		if launcherAuto {
+			os.Exit(launcherExitTransportNotReady)
+		}
 		printRuntimeError("Unable to initialize USB haptics.", err)
 		if diagnosticStatus {
 			for _, line := range details {
@@ -231,7 +266,13 @@ func main() {
 	}
 	if testStereo {
 		fmt.Println("USB stereo test: LEDs kept off, HID keep-alive active.")
-		runUSBSharedStereoTest(audio, d)
+		if err := runUSBSharedStereoTest(audio, d); err != nil {
+			if launcherAuto {
+				os.Exit(launcherExitControllerDisconnected)
+			}
+			printRuntimeError("Controller disconnected.", err)
+			os.Exit(3)
+		}
 		return
 	}
 
@@ -362,6 +403,9 @@ func main() {
 		if stateChanged || keepAliveDue {
 			if err := d.writeReport(buildUSBSharedStateReport(d, frame.Control, frame.RGB)); err != nil {
 				printRuntimeError("Controller disconnected.", err)
+				if launcherAuto {
+					launcherExitCode = launcherExitControllerDisconnected
+				}
 				requestStop()
 				return
 			} else {

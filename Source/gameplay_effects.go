@@ -944,38 +944,6 @@ func hsvToRGB(h, s, v float64) (byte, byte, byte) {
 	return roundByte(r1 + m), roundByte(g1 + m), roundByte(b1 + m)
 }
 
-func rpmRGB(t telemetry, now time.Time) ([3]byte, bool) {
-	var black [3]byte
-	if !t.Active || t.Raw == nil || !t.Raw.EngineRunning || t.Raw.MaxRPM <= 1 {
-		return black, false
-	}
-	cfg := feelProfile().LED
-	ratio := clamp01(t.Raw.RPM / math.Max(t.Raw.MaxRPM, 1))
-	if ratio < cfg.FirstRatio {
-		return black, false
-	}
-	blink := t.Raw.RevLimiter && ratio >= cfg.BlinkMinRatio
-	if !cfg.BlinkOnlyOnRevLimiter && ratio >= 0.985 {
-		blink = true
-	}
-	if blink {
-		hz := math.Max(1, cfg.BlinkHz)
-		on := (int(math.Floor(float64(now.UnixNano())/1e9*hz*2.0)) % 2) == 0
-		if !on {
-			return black, true
-		}
-		return [3]byte{byte(clampInt(cfg.MaxBrightness, 0, 255)), 0, 0}, true
-	}
-	if ratio >= cfg.RedRatio {
-		return [3]byte{byte(clampInt(cfg.MaxBrightness, 0, 255)), 0, 0}, false
-	}
-	x := clamp01((ratio - cfg.FirstRatio) / math.Max(0.001, cfg.RedRatio-cfg.FirstRatio))
-	hue := 120 * (1 - x)
-	brightness := float64(cfg.MinBrightness) + float64(cfg.MaxBrightness-cfg.MinBrightness)*clamp01(x*1.8)
-	r, g, b := hsvToRGB(hue, 1.0, brightness/255.0)
-	return [3]byte{r, g, b}, false
-}
-
 func surfaceDrive(profile string) float64 {
 	switch profile {
 	case "asphalt", "asphalt_wet", "slippery", "ice":

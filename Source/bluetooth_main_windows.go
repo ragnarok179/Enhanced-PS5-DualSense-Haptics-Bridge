@@ -18,6 +18,12 @@ const telemetryAddress = "127.0.0.1:6974"
 
 func main() {
 	runtime.LockOSThread()
+	launcherExitCode := 0
+	defer func() {
+		if launcherExitCode != 0 {
+			os.Exit(launcherExitCode)
+		}
+	}()
 	endRealtime := enableRealtimeScheduling()
 	defer endRealtime()
 	probe, launcherAuto, testStereo, testExtendedInputs, testMotionInputs, testTouchpadMouse, list, restoreOnly, showProfile, diagnosticStatus, diagnosticTouchpadBinding := false, false, false, false, false, false, false, false, false, false, false
@@ -82,13 +88,25 @@ func main() {
 		return
 	}
 	if testExtendedInputs {
-		os.Exit(runExtendedInputDiagnostic(d))
+		code := runExtendedInputDiagnostic(d)
+		if launcherAuto && code == 3 {
+			os.Exit(launcherExitControllerDisconnected)
+		}
+		os.Exit(code)
 	}
 	if testMotionInputs {
-		os.Exit(runMotionInputDiagnostic(d))
+		code := runMotionInputDiagnostic(d)
+		if launcherAuto && code == 3 {
+			os.Exit(launcherExitControllerDisconnected)
+		}
+		os.Exit(code)
 	}
 	if testTouchpadMouse {
-		os.Exit(runTouchpadMouseDiagnostic(d))
+		code := runTouchpadMouseDiagnostic(d)
+		if launcherAuto && code == 3 {
+			os.Exit(launcherExitControllerDisconnected)
+		}
+		os.Exit(code)
 	}
 	ensureUserSettings()
 	if list {
@@ -100,6 +118,12 @@ func main() {
 	// audio haptics with the exact 78-byte control report.
 	var startupControlSeq byte
 	if err := initializeGamepadCoreBluetooth(d, &startupControlSeq); err != nil {
+		// A Bluetooth device can be enumerated a moment before Windows has
+		// finished restoring its enhanced HID route. In launcher-managed mode
+		// retry silently instead of terminating the session.
+		if launcherAuto {
+			os.Exit(launcherExitTransportNotReady)
+		}
 		printRuntimeError("Unable to initialize the Bluetooth controller.", err)
 		os.Exit(3)
 	}
@@ -123,7 +147,13 @@ func main() {
 	}
 	if testStereo {
 		fmt.Println("Bluetooth stereo hardware test: left, right, center.")
-		runHardwareTest(d)
+		if err := runHardwareTest(d); err != nil {
+			if launcherAuto {
+				os.Exit(launcherExitControllerDisconnected)
+			}
+			printRuntimeError("Controller disconnected.", err)
+			os.Exit(3)
+		}
 		return
 	}
 
@@ -268,6 +298,9 @@ func main() {
 					nextIdleCheck = now.Add(5 * time.Second) // retry backoff, not fake user activity
 				} else {
 					fmt.Println("Bluetooth controller powered off after idle timeout.")
+					if launcherAuto {
+						launcherExitCode = launcherExitControllerDisconnected
+					}
 					requestStop()
 					return
 				}
@@ -340,6 +373,9 @@ func main() {
 		}
 		if err != nil {
 			printRuntimeError("Controller disconnected.", err)
+			if launcherAuto {
+				launcherExitCode = launcherExitControllerDisconnected
+			}
 			requestStop()
 			return
 		} else {
@@ -453,39 +489,53 @@ func mustUDPAddr(s string) *net.UDPAddr {
 	return a
 }
 
-func sendSilence(d *device, outputSeq, audioCounter *byte, count int) {
+func sendSilence(d *device, outputSeq, audioCounter *byte, count int) error {
 	frames := hapticFramesPerReport36
 	interval := time.Second * time.Duration(frames) / bluetoothHapticSampleRate
 	neutral := buildBluetoothSetStateData63ExternalRGB(telemetry{})
 	for i := 0; i < count; i++ {
 		samples := make([]int8, frames*2)
 		report := buildBluetoothAllInOneReport36(*outputSeq, *audioCounter, samples, neutral)
-		_ = d.writeReportExact(report)
+		if err := d.writeReportExact(report); err != nil {
+			return err
+		}
 		*outputSeq = (*outputSeq + 1) & 0x0F
 		*audioCounter = *audioCounter + 1
 		time.Sleep(interval)
 	}
+	return nil
 }
 
-func runHardwareTest(d *device) {
+func runHardwareTest(d *device) error {
 	m := newCanonicalHapticMixer()
 	pcmStream := newCanonicalPCMStream()
 	var seq byte
 	counter := byte(0)
-	sendSilence(d, &seq, &counter, 12)
+	if err := sendSilence(d, &seq, &counter, 12); err != nil {
+		return err
+	}
 	fmt.Println("Left test...")
-	playTestVoice(d, m, pcmStream, &seq, &counter, "collision", 1.0, 0, 650)
+	if err := playTestVoice(d, m, pcmStream, &seq, &counter, "collision", 1.0, 0, 650); err != nil {
+		return err
+	}
 	time.Sleep(300 * time.Millisecond)
 	fmt.Println("Right test...")
-	playTestVoice(d, m, pcmStream, &seq, &counter, "collision", 0, 1.0, 650)
+	if err := playTestVoice(d, m, pcmStream, &seq, &counter, "collision", 0, 1.0, 650); err != nil {
+		return err
+	}
 	time.Sleep(300 * time.Millisecond)
 	fmt.Println("Center test...")
-	playTestVoice(d, m, pcmStream, &seq, &counter, "landing", 1.0, 1.0, 650)
-	sendSilence(d, &seq, &counter, 10)
+	if err := playTestVoice(d, m, pcmStream, &seq, &counter, "landing", 1.0, 1.0, 650); err != nil {
+		return err
+	}
+	if err := sendSilence(d, &seq, &counter, 10); err != nil {
+		return err
+	}
 	fmt.Println("Test complete.")
+	return nil
 }
 
-func playTestVoice(d *device, m *hapticMixer, pcmStream *canonicalPCMStream, seq, counter *byte, profile string, l, r float64, duration int) {
+func playTestVoice(d *device, m *hapticMixer, pcmStream *canonicalPCMStream, seq, counter *byte, profile string, l, r float64, duration int) error {
 	m.mu.Lock()
 	m.voices = append(m.voices, &voice{profile: profile, left: l, right: r, durationSamples: duration * canonicalHapticSampleRate / 1000, noise: 0x12345678})
 	m.lastPacket = time.Now()
@@ -501,10 +551,11 @@ func playTestVoice(d *device, m *hapticMixer, pcmStream *canonicalPCMStream, seq
 		samples := pcmStream.processBluetooth(canonical)
 		report := buildBluetoothAllInOneReport36(*seq, *counter, samples, neutral)
 		if err := d.writeReportExact(report); err != nil {
-			fmt.Println("Test write:", err)
+			return err
 		}
 		*seq = (*seq + 1) & 15
 		*counter = *counter + 1
 		time.Sleep(interval)
 	}
+	return nil
 }
