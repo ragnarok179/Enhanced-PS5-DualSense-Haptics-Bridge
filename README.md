@@ -61,7 +61,6 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
 
 ### Notes
 
-- The Bridge can be launched before or after BeamNG, as long as the DualSense is connected to the PC.
 - No specific launch order is required.
 - If the DualSense is disconnected, the Bridge stays open and waits for it. Reconnecting through USB or Bluetooth is detected automatically.
 
