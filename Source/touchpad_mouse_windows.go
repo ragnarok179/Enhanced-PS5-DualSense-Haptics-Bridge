@@ -55,7 +55,10 @@ func sendMouse(flags uint32, dx, dy int32, data uint32) bool {
 	inserted, _, callErr := procSendInputTouchpad.Call(1, uintptr(unsafe.Pointer(&in)), size)
 	if inserted != 1 {
 		if touchpadSendInputFailureLogged.CompareAndSwap(false, true) {
-			fmt.Printf("Touchpad mouse: SendInput FAILED (INPUT=%d bytes, err=%v). If BeamNG is running as administrator, run the Bridge at the same integrity level.\n", size, callErr)
+			fmt.Println("Touchpad mouse input is unavailable. If BeamNG is running as administrator, run the Bridge as administrator too.")
+			if runtimeDiagnosticsEnabled() {
+				fmt.Printf("DIAG SendInput failed: INPUT=%d bytes, err=%v\n", size, callErr)
+			}
 		}
 		return false
 	}

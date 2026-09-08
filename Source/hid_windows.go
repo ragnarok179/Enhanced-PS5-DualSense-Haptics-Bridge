@@ -274,9 +274,9 @@ func (d *device) writeReport(report []byte) error {
 	runtime.KeepAlive(wire)
 	if r == 0 {
 		if errno, ok := callErr.(syscall.Errno); ok && errno == 0 {
-			return fmt.Errorf("WriteFile failed without a Win32 error code (%d/%d)", written, len(wire))
+			return fmt.Errorf("WriteFile failed without a Win32 error code")
 		}
-		return fmt.Errorf("WriteFile: %v (%d/%d)", callErr, written, len(wire))
+		return fmt.Errorf("WriteFile: %v", callErr)
 	}
 	return nil
 }
@@ -296,9 +296,9 @@ func (d *device) writeReportExact(report []byte) error {
 	runtime.KeepAlive(report)
 	if r == 0 {
 		if errno, ok := callErr.(syscall.Errno); ok && errno == 0 {
-			return fmt.Errorf("exact WriteFile failed without a Win32 error code (%d/%d)", written, len(report))
+			return fmt.Errorf("exact WriteFile failed without a Win32 error code")
 		}
-		return fmt.Errorf("WriteFile exact: %v (%d/%d)", callErr, written, len(report))
+		return fmt.Errorf("WriteFile exact: %v", callErr)
 	}
 	return nil
 }

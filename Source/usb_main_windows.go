@@ -171,7 +171,7 @@ func main() {
 	}
 	d, err := findUSBDualSense()
 	if err != nil {
-		fmt.Println("USB error:", err)
+		printRuntimeError("Unable to detect the DualSense controller.", err)
 		os.Exit(2)
 	}
 	if d == nil {
@@ -198,9 +198,11 @@ func main() {
 	ensureUserSettings()
 	audio, details, err := openHapticAudioEngine(preferredAudio)
 	if err != nil || audio == nil {
-		fmt.Println("Unable to open the USB WASAPI haptic endpoint:", err)
-		for _, line := range details {
-			fmt.Println(line)
+		printRuntimeError("Unable to initialize USB haptics.", err)
+		if diagnosticStatus {
+			for _, line := range details {
+				fmt.Println("DIAG", line)
+			}
 		}
 		os.Exit(3)
 	}
@@ -235,7 +237,7 @@ func main() {
 
 	conn, err := net.ListenUDP("udp", mustUSBAddr(telemetryAddress))
 	if err != nil {
-		fmt.Println("UDP:", err)
+		printRuntimeError("Unable to connect the Bridge to BeamNG.", err)
 		os.Exit(4)
 	}
 	defer conn.Close()
@@ -359,7 +361,9 @@ func main() {
 		keepAliveDue := stateSynced && now.Sub(lastHIDWrite) >= usbHIDKeepAliveInterval
 		if stateChanged || keepAliveDue {
 			if err := d.writeReport(buildUSBSharedStateReport(d, frame.Control, frame.RGB)); err != nil {
-				fmt.Println("HID USB:", err)
+				printRuntimeError("Controller disconnected.", err)
+				requestStop()
+				return
 			} else {
 				hidWrites++
 				if keepAliveDue && !stateChanged {

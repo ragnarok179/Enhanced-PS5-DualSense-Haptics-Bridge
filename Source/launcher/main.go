@@ -26,7 +26,7 @@ func main() {
 func run() int {
 	executable, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: unable to locate the launcher: %v\n", err)
+		fmt.Fprintln(os.Stderr, "ERROR: the Bridge launcher could not start.")
 		return 2
 	}
 
@@ -37,7 +37,7 @@ func run() int {
 	if launchBeamNG {
 		fmt.Println("Enhanced PS5 DualSense Bridge", buildinfo.DisplayVersion, "- starting BeamNG")
 		if err := exec.Command("explorer.exe", beamNGSteamURL).Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: unable to launch BeamNG through Steam: %v\n", err)
+			fmt.Fprintln(os.Stderr, "ERROR: BeamNG could not be started through Steam.")
 			return 3
 		}
 		time.Sleep(time.Second)
@@ -48,11 +48,11 @@ func run() int {
 	bluetoothPath := filepath.Join(bridgeDir, "EnhancedPS5DualSenseHapticsBluetooth.exe")
 
 	if !fileExists(usbPath) {
-		fmt.Fprintf(os.Stderr, "ERROR: missing %q.\n", usbPath)
+		fmt.Fprintln(os.Stderr, "ERROR: Bridge files are incomplete. Reinstall or update the Bridge.")
 		return 2
 	}
 	if !fileExists(bluetoothPath) {
-		fmt.Fprintf(os.Stderr, "ERROR: missing %q.\n", bluetoothPath)
+		fmt.Fprintln(os.Stderr, "ERROR: Bridge files are incomplete. Reinstall or update the Bridge.")
 		return 2
 	}
 
@@ -75,7 +75,7 @@ func run() int {
 	if fileExists(diagnosticPath) {
 		fmt.Fprintf(os.Stderr, "Hardware diagnostics: %s\n", diagnosticPath)
 	} else {
-		fmt.Fprintf(os.Stderr, "ERROR: hardware diagnostics file is missing: %s\n", diagnosticPath)
+		fmt.Fprintln(os.Stderr, "ERROR: the hardware diagnostics file is missing. Reinstall or update the Bridge.")
 	}
 	return 1
 }
@@ -143,10 +143,10 @@ func runBridge(path, workingDirectory string, args ...string) int {
 				}
 			}
 		}
-		fmt.Fprintf(os.Stderr, "\nThe bridge exited with code %d.\n", code)
+		fmt.Fprintln(os.Stderr, "\nThe Bridge stopped unexpectedly. Run the hardware diagnostics if the problem continues.")
 		return code
 	}
 
-	fmt.Fprintf(os.Stderr, "ERROR: unable to start the bridge: %v\n", err)
+	fmt.Fprintln(os.Stderr, "ERROR: the Bridge could not be started.")
 	return 2
 }

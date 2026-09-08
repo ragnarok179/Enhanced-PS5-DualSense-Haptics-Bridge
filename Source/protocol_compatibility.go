@@ -59,7 +59,7 @@ func (g *protocolCompatibilityGuard) handlePacket(data []byte, diagnostics bool,
 		g.unsupportedOnce.Do(func() {
 			_ = writePendingCompatibilityRequest(env)
 			mod := fallbackTelemetryModVersion(env.ModVersion)
-			fmt.Printf("UPDATE REQUIRED: BeamNG mod %s uses wire generation %d; Bridge %s supports %d-%d.\n", mod, env.Version, buildinfo.DisplayVersion, protocolMinVersion, protocolMaxVersion)
+			fmt.Printf("UPDATE REQUIRED: BeamNG mod %s is not compatible with Bridge %s.\n", mod, buildinfo.DisplayVersion)
 			fmt.Println("Run UPDATE_DUALSENSE.exe manually and follow the displayed steps.")
 			requestStop()
 		})

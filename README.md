@@ -230,18 +230,6 @@ BeamNG
                        DualSense
 ```
 
-### Technical boundaries
-
-- **BeamNG Vehicle Lua** is the source of gameplay/physics telemetry and the authority for collision sound calls.
-- **BeamNG GE Lua** handles settings, RGB/RPM lighting and the virtual input layer used by BeamNG bindings.
-- **The Bridge** owns DualSense haptics, adaptive triggers, controller-speaker playback and raw DualSense input decoding.
-- Gameplay effects are interpreted by a **transport-neutral Common Feel Engine** before the USB/Bluetooth split. USB is the canonical 48 kHz reference path; Bluetooth derives its 3 kHz haptic stream from the same source.
-- Bluetooth uses a **single runtime `0x36` HID writer** for haptics, triggers and controller-speaker packets.
-- **RGB/RPM lighting stays BeamNG-owned**; the Bridge does not run a competing RGB writer.
-- Controller-speaker collision audio is triggered only by **exact BeamNG sound calls**. The Bridge reads the matching BeamNG audio assets locally and does not synthesize replacement collision events.
-- All Mod ↔ Bridge communication is local to `127.0.0.1`.
-
-
 # Updates
 
 Run `UPDATE_DUALSENSE.exe` to check for updates and follow the displayed instructions.

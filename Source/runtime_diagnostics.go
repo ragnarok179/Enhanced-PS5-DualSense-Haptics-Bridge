@@ -1,6 +1,9 @@
 package main
 
-import "sync/atomic"
+import (
+	"fmt"
+	"sync/atomic"
+)
 
 var runtimeDiagnostics atomic.Bool
 var touchpadBindingDiagnostics atomic.Bool
@@ -19,4 +22,11 @@ func setTouchpadBindingDiagnosticsEnabled(enabled bool) {
 
 func touchpadBindingDiagnosticsEnabled() bool {
 	return touchpadBindingDiagnostics.Load()
+}
+
+func printRuntimeError(message string, err error) {
+	fmt.Println(message)
+	if runtimeDiagnosticsEnabled() && err != nil {
+		fmt.Printf("DIAG error: %v\n", err)
+	}
 }

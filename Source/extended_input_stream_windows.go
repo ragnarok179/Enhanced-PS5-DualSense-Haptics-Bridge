@@ -38,21 +38,21 @@ func startExtendedInputStream(d *device, done <-chan struct{}) {
 
 	readHandle := openPath(d.path, genericRead)
 	if !validHandle(readHandle) {
-		fmt.Println("Extended inputs: unable to open dedicated HID read handle; feature disabled.")
+		fmt.Println("Additional controller inputs are unavailable.")
 		return
 	}
 
 	touchConn := dialLocalUDP(extendedInputBeamNGAddress)
 	if touchConn == nil {
 		procClose.Call(uintptr(readHandle))
-		fmt.Println("Extended inputs: unable to open BeamNG UDP output.")
+		fmt.Println("Additional controller inputs could not connect to BeamNG.")
 		return
 	}
 	motionConn := dialLocalUDP(motionInputBeamNGAddress)
 
 	calibration, calibrationErr := readDualSenseMotionCalibration(readHandle)
 	if calibrationErr != nil {
-		fmt.Println("DualSense motion calibration: unavailable; using Sony nominal scales.")
+		fmt.Println("Motion calibration is unavailable; default calibration will be used.")
 	}
 
 	startTouchpadBindingStatusReceiver(done)

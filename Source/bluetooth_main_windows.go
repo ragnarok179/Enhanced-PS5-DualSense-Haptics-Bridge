@@ -67,7 +67,7 @@ func main() {
 	}
 	d, err := findBluetoothDualSense()
 	if err != nil {
-		fmt.Println("Detection error:", err)
+		printRuntimeError("Unable to detect the DualSense controller.", err)
 		os.Exit(2)
 	}
 	if d == nil {
@@ -100,7 +100,7 @@ func main() {
 	// audio haptics with the exact 78-byte control report.
 	var startupControlSeq byte
 	if err := initializeGamepadCoreBluetooth(d, &startupControlSeq); err != nil {
-		fmt.Println("Unable to initialize the Bluetooth transport:", err)
+		printRuntimeError("Unable to initialize the Bluetooth controller.", err)
 		os.Exit(3)
 	}
 	if restoreOnly {
@@ -129,7 +129,7 @@ func main() {
 
 	conn, err := net.ListenUDP("udp", mustUDPAddr(telemetryAddress))
 	if err != nil {
-		fmt.Println("Unable to open BeamNG telemetry port:", err)
+		printRuntimeError("Unable to connect the Bridge to BeamNG.", err)
 		os.Exit(2)
 	}
 	defer conn.Close()
@@ -198,7 +198,7 @@ func main() {
 	lastStatus := time.Time{}
 	feelEngine := newSharedFeelEngine(mixer)
 	pcmStream := newCanonicalPCMStream()
-	writeErrors, writes := 0, 0
+	writes := 0
 	firstHeaderLogged := false
 
 	// Runtime timing metrics. A successful WriteFile only confirms that Windows
@@ -264,7 +264,7 @@ func main() {
 			if minutes > 0 && streamFresh && !lastInput.IsZero() && now.Sub(lastInput) >= time.Duration(minutes)*time.Minute {
 				fmt.Printf("Bluetooth idle timeout reached (%d min); powering off controller.\n", minutes)
 				if err := disconnectDualSenseBluetoothViaWindows(d); err != nil {
-					fmt.Println("Unable to power off Bluetooth controller:", err)
+					printRuntimeError("Unable to power off the controller automatically.", err)
 					nextIdleCheck = now.Add(5 * time.Second) // retry backoff, not fake user activity
 				} else {
 					fmt.Println("Bluetooth controller powered off after idle timeout.")
@@ -339,13 +339,11 @@ func main() {
 			hapticWriteMax = writeDuration
 		}
 		if err != nil {
-			writeErrors++
-			if writeErrors < 5 || writeErrors%50 == 0 {
-				fmt.Println("Bluetooth haptic write:", err)
-			}
+			printRuntimeError("Controller disconnected.", err)
+			requestStop()
+			return
 		} else {
 			writes++
-			writeErrors = 0
 		}
 
 		if diagnosticStatus && (lastStatus.IsZero() || now.Sub(lastStatus) >= time.Second) {
