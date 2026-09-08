@@ -42,8 +42,6 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
   - Create / Share button
   - PlayStation button *(Steam Input disabled)*
   - Mute button
-- **Local Split Screen compatibility:**
-  - Designed to work alongside the **Local Split Screen** mod for multi-controller local play.
 
 
 # Installation
@@ -66,8 +64,10 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
 - The Bridge can be launched before or after BeamNG, as long as the DualSense is connected to the PC.
 - No specific launch order is required.
 - If you disconnect the DualSense or switch between USB and Bluetooth, reconnect the controller and restart the Bridge.
-- Do not run DSX, DS4Windows or another application controlling DualSense haptics or LEDs at the same time.
-- **Local Split Screen:** controller assignment remains managed by BeamNG / Local Split Screen while this Bridge handles the DualSense-specific features.
+
+#### Compatibility
+
+The mod is compatible with **Local Split Screen**.
 
 
 # Controls, bindings and settings
