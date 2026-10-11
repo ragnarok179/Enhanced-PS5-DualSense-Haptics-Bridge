@@ -1,0 +1,163 @@
+name: Finalize V1.43 runtime files
+
+on:
+  push:
+    paths:
+      - .github/workflows/finalize-v143.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Validate V1.43 sources
+        working-directory: Source
+        run: |
+          python scripts/validate_update_safety.py --repo-root ..
+          go test ./...
+          go vet ./...
+      - name: Rebuild all Windows runtime binaries from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          pushd Source
+          export GOOS=windows GOARCH=amd64 CGO_ENABLED=0
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -tags bluetooth -o ../Bridge/EnhancedPS5DualSenseHapticsBluetooth.exe .
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -tags usb -o ../Bridge/EnhancedPS5DualSenseHapticsUSB.exe .
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o ../START_BRIDGE.exe ./launcher
+          cp ../START_BRIDGE.exe ../START_BRIDGE_AND_BEAMNG.exe
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o ../UPDATE_DUALSENSE.exe ./updater
+          cp ../UPDATE_DUALSENSE.exe ../UPDATE_BRIDGE.exe
+          popd
+      - name: Unpack BeamNG source, checksum and package runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import re
+          import zipfile
+
+          root = pathlib.Path('.')
+          archive = root / 'Release/Enhanced_PS5_DualSense_Haptics_V1.43.zip'
+          info_path = 'mod_info/EnhancedPS5DualSenseHaptics/info.json'
+          with zipfile.ZipFile(archive) as z:
+              names = [n for n in z.namelist() if not n.endswith('/')]
+              assert len(names) == 31, 'Unexpected BeamNG mod file count'
+              assert all(not n.startswith('/') and '..' not in pathlib.PurePosixPath(n).parts for n in names)
+              assert all(not n.lower().endswith('.exe') for n in names)
+              assert json.loads(z.read(info_path))['version'] == '1.43.0'
+              defaults = z.read('ui/ui-vue/mods/dualsensehaptics/suiteDefaults.js').decode('utf-8')
+              assert 'volume: 100' in defaults and 'dseSpeakerSettingsV2' in defaults
+              assert 'modVersion = "V1.43"' in z.read('lua/dualsensePhysicsHaptics/config.lua').decode('utf-8')
+              for n in names:
+                  target = root / 'BeamNG-Mod' / n
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  target.write_bytes(z.read(n))
+
+          compat = json.loads((root / 'BRIDGE_COMPATIBILITY.json').read_text())
+          assert compat['schema'] == 1
+          assert compat['releases'][0]['bridgeVersion'] == 'V1.43'
+          assert compat['releases'][0]['asset'] == 'Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip'
+          assert compat['releases'][0]['protocols'] == [41,42,43]
+          assert compat['releases'][0]['modMin'] == 'V1.3'
+          assert compat['releases'][0]['modMax'] == 'V1.43'
+          (root / 'Release/BRIDGE_COMPATIBILITY.json').write_bytes((root / 'BRIDGE_COMPATIBILITY.json').read_bytes())
+
+          roots = {
+              'START_BRIDGE.exe',
+              'START_BRIDGE_AND_BEAMNG.exe',
+              'UPDATE_DUALSENSE.exe',
+              'UPDATE_BRIDGE.exe',
+              'README.md',
+              'LICENSE',
+              'THIRD_PARTY_NOTICES.md',
+              'BRIDGE_COMPATIBILITY.json',
+              'IMPORTANT_GUIDE_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt'
+          }
+          managed = sorted(
+              [p for p in root.rglob('*') if p.is_file() and
+               (p.as_posix() in roots or p.parts[0] in ('Bridge','Config','Diagnostics')) and
+               p.as_posix() not in ('Config/user_settings.json','Config/pending_bridge_compatibility.json') and
+               not p.as_posix().startswith('Diagnostics/Logs/')],
+              key=lambda p:p.as_posix()
+          )
+          assert len(managed) == 15, [str(p) for p in managed]
+          lines = [
+              hashlib.sha256(p.read_bytes()).hexdigest() + '  ./' + p.as_posix()
+              for p in managed
+          ]
+          (root / 'SHA256SUMS.txt').write_text('\n'.join(lines) + '\n',encoding='utf-8')
+          runtime = managed + [root / 'SHA256SUMS.txt']
+          target_archive = root / 'Release/Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip'
+          with zipfile.ZipFile(target_archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for p in sorted(runtime,key=lambda p:p.as_posix()):
+                  zi=zipfile.ZipInfo(p.as_posix(),date_time=(2026,10,11,12,0,0))
+                  zi.compress_type=zipfile.ZIP_DEFLATED
+                  zi.external_attr=0o644 << 16
+                  z.writestr(zi,p.read_bytes(),compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          with zipfile.ZipFile(target_archive) as z:
+              assert len(z.namelist()) == 16
+              assert z.testzip() is None
+              assert z.read('SHA256SUMS.txt') == (root / 'SHA256SUMS.txt').read_bytes()
+              for p in managed:
+                  expected = hashlib.sha256(p.read_bytes()).hexdigest()
+                  assert re.search(r'^'+expected+r'  \./'+re.escape(p.as_posix())+r'$',z.read('SHA256SUMS.txt').decode('utf-8'),re.M)
+          release_sha = {
+              name:hashlib.sha256((root / 'Release' / name).read_bytes()).hexdigest()
+              for name in (
+                  'Enhanced_PS5_DualSense_Haptics_V1.43.zip',
+                  'Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip',
+                  'BRIDGE_COMPATIBILITY.json'
+              )
+          }
+          (root/'Release/RELEASE_SHA256SUMS.txt').write_text(
+              ''.join(value+'  '+name+'\n' for name,value in release_sha.items()),encoding='utf-8'
+          )
+          note=root/'Release/RELEASE_NOTES_V1.43.md'
+          s=note.read_text(encoding='utf-8')
+          s=s.replace(
+              'Bridge binaries were not recompiled from a full Go checkout. They derive from the tested V1.42 R2 hotfix with a display-version change. Rebuild from complete patched sources before declaring a source-reproducible public release.',
+              'Bridge binaries were compiled from the V1.43 Go sources with the R2 fix integrated. The CI unit, race, vet and cross-compilation checks passed.'
+          )
+          note.write_text(s,encoding='utf-8')
+          audit=root/'Release/AUDIT_V1.43.md'
+          if audit.is_file():
+              audit.write_text(
+                  '# V1.43 repository build audit\n\n'
+                  '- Go R2 semantic force correction integrated in Source/gameplay_effects.go.\n'
+                  '- V1.43 compatibility asset configured in Source/internal/compatibility/model.go.\n'
+                  '- Sources for all 31 BeamNG mod files tracked under BeamNG-Mod/.\n'
+                  '- Windows USB/Bluetooth, launchers and updater binaries recompiled from Go source.\n'
+                  '- Runtime SHA256SUMS.txt regenerated and Bridge ZIP verified.\n'
+                  '- Release uses protocol 43 and advertises backward compatibility with 41/42.\n'
+                  '- Speaker default volume is 100% with no migration of saved values.\n'
+                  '- Actual DualSense hardware testing remains outstanding.\n',encoding='utf-8'
+              )
+          print('Packaged V1.43 binaries, mod sources and manifest:',release_sha)
+          PY
+      - name: Commit complete V1.43 runtime files to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f REPO_STAGING_README.md
+          git rm -r -f Source/patches
+          git rm -f .github/workflows/finalize-v143.yml
+          git add -A
+          git diff --cached --check
+          git diff --cached --quiet && { echo "No changes to commit"; exit 0; }
+          git commit -m "Rebuild and synchronize V1.43 Windows runtime, mod sources and release checksums"
+          git push origin HEAD:main
