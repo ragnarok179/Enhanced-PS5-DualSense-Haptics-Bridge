@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "protocolPolicy": "Legacy migration support starts at Bridge/Mod V1.3. V1.3 and V1.4 legacy updaters can update directly to Bridge V1.43 through BRIDGE_COMPATIBILITY.json. Protocol 43 remains the unified wire generation used from V1.41 onward; once Bridge V1.43 is installed, run UPDATE_DUALSENSE.exe to download the matching BeamNG mod ZIP and follow the manual installation instructions.",
+  "protocols": [
+    {
+      "id": 41,
+      "status": "legacy",
+      "introduced": "V1.1",
+      "description": "Old protocol generation retained because the supported V1.3 generation still uses protocol 41. Versions older than V1.3 are intentionally outside the supported migration range."
+    },
+    {
+      "id": 42,
+      "status": "legacy",
+      "introduced": "V1.2",
+      "description": "Legacy generation used by later pre-V1.41 releases such as V1.4. V1.2 itself is intentionally outside the supported migration range."
+    },
+    {
+      "id": 43,
+      "status": "current",
+      "introduced": "V1.41",
+      "description": "Unified wire generation introduced by V1.41 and reused by V1.43."
+    }
+  ],
+  "releases": [
+    {
+      "bridgeVersion": "V1.43",
+      "tag": "V1.43",
+      "channel": "stable",
+      "protocols": [
+        41,
+        42,
+        43
+      ],
+      "modMin": "V1.3",
+      "modMax": "V1.43",
+      "asset": "Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip"
+    }
+  ]
+}

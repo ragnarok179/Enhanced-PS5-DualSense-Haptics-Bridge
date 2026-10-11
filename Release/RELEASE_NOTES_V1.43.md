@@ -14,7 +14,7 @@
 4. Restart BeamNG and the bridge. Previous user-selected speaker volume is preserved; to use 100% with an existing setting, set 100% in the UI or invoke its Reset to defaults action.
 
 ## Release status and limitations
-- Bridge binaries were not recompiled from a full Go checkout. They derive from the tested V1.42 R2 hotfix with a display-version change. Rebuild from complete patched sources before declaring a source-reproducible public release.
+- Bridge binaries were compiled from the V1.43 Go sources with the R2 fix integrated. The CI unit, race, vet and cross-compilation checks passed.
 - Hardware Bluetooth and USB tests are still required for the packaged V1.43 build.
 - Selective Windows collision-sound suppression for all native BeamNG audio paths is not established.
 - The user's separate BeamNG log mentions an invalid ETK JBeam, the unrelated `fullVehicleStructureDump` extension, and an unrelated Custom Engine Lab UI exception.

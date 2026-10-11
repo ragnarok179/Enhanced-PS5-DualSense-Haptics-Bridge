@@ -1,0 +1,5 @@
+{
+  "name": "DualSense Extended Inputs",
+  "notes": "Shared virtual device: touchpad uses axes 0-3/buttons 0-16; motion sensors use axes 4-9/buttons 17-22. The physical DualSense remains separate.",
+  "bindings": []
+}

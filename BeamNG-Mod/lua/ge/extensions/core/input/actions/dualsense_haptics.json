@@ -1,0 +1,12 @@
+{
+  "dualsense_haptics_open_settings": {
+    "cat": "menuExtra",
+    "order": 980,
+    "isBasic": true,
+    "ctx": "tlua",
+    "actionMap": "Global",
+    "onDown": "local r=extensions.ui_router and extensions.ui_router.getCurrent and extensions.ui_router.getCurrent(); local n=r and ((r.request and r.request.name) or (r.resolved and r.resolved.name)); if n=='dualsenseHaptics.settings' then extensions.ui_menuManager.closeMenu() else extensions.ui_router.navigate('dualsenseHaptics.settings') end",
+    "title": "DualSense Haptics Settings",
+    "desc": "Toggle the Enhanced PS5 DualSense Haptics settings menu"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "dualsenseext_toggle_touchpad_mouse_mode": {
+    "cat": "menuExtra",
+    "order": 900,
+    "ctx": "tlua",
+    "actionMap": "Global",
+    "onDown": "if extensions.dualsenseExtendedInputs then extensions.dualsenseExtendedInputs.toggleTouchpadMouseMode() end",
+    "title": "Toggle DualSense Touchpad Mouse Mode",
+    "desc": "Switches between saved touchpad bindings and Windows mouse mode.",
+    "isBasic": true
+  }
+}

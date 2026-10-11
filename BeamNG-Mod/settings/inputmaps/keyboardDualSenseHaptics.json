@@ -1,0 +1,8 @@
+{
+  "bindings": [
+    {
+      "action": "dualsense_haptics_open_settings",
+      "control": "o"
+    }
+  ]
+}
