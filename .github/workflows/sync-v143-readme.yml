@@ -1,0 +1,59 @@
+name: Sync V1.43 README into Bridge ZIP
+on:
+  push:
+    paths:
+      - .github/workflows/sync-v143-readme.yml
+permissions:
+  contents: write
+jobs:
+  repack:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate and synchronize published Bridge layout
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          root=pathlib.Path('.')
+          oldzip=root/'Release/Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip'
+          with zipfile.ZipFile(oldzip) as z:
+              assert z.testzip() is None
+              names=set(z.namelist())
+              assert len(names)==16 and 'README.md' in names and 'SHA256SUMS.txt' in names
+              for name in names - {'SHA256SUMS.txt','README.md'}:
+                  assert (root/name).is_file() and z.read(name)==(root/name).read_bytes(), name
+          managed=sorted(names-{'SHA256SUMS.txt'})
+          assert len(managed)==15
+          manifest=''.join(hashlib.sha256((root/name).read_bytes()).hexdigest()+'  ./'+name+'\n' for name in managed)
+          (root/'SHA256SUMS.txt').write_text(manifest,encoding='utf-8')
+          with zipfile.ZipFile(oldzip,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for name in sorted(names):
+                  zi=zipfile.ZipInfo(name,date_time=(2026,10,11,12,0,0))
+                  zi.compress_type=zipfile.ZIP_DEFLATED
+                  zi.external_attr=0o644<<16
+                  z.writestr(zi,(root/name).read_bytes(),compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          with zipfile.ZipFile(oldzip) as z:
+              assert z.testzip() is None
+              assert z.read('README.md')==(root/'README.md').read_bytes()
+              assert z.read('SHA256SUMS.txt')==(root/'SHA256SUMS.txt').read_bytes()
+          assets=['Enhanced_PS5_DualSense_Haptics_V1.43.zip',
+                  'Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip',
+                  'BRIDGE_COMPATIBILITY.json']
+          (root/'Release/RELEASE_SHA256SUMS.txt').write_text(''.join(
+              hashlib.sha256((root/'Release'/name).read_bytes()).hexdigest()+'  '+name+'\n'
+              for name in assets),encoding='utf-8')
+          print('Readme, checksum manifest and Bridge V1.43 ZIP are synchronized.')
+          PY
+      - name: Commit synchronized README package and remove temporary workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/sync-v143-readme.yml
+          git add README.md SHA256SUMS.txt Release/Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip Release/RELEASE_SHA256SUMS.txt
+          git diff --cached --check
+          git commit -m "Sync V1.43 Bridge distribution troubleshooting README and hashes"
+          git push origin HEAD:main
