@@ -25,7 +25,7 @@ func TestCompatibilityEnvelopeFutureProtocolRequiresUpdate(t *testing.T) {
 		t.Fatalf("bad envelope: %+v ok=%t", env, ok)
 	}
 	if gameplayProtocolSupported(env.Version) {
-		t.Fatal("Bridge V1.42 must not claim future wire generation 44 support")
+		t.Fatal("Bridge V1.43 must not claim future wire generation 44 support")
 	}
 }
 
@@ -37,7 +37,7 @@ func TestPendingCompatibilityUsesNewLayout(t *testing.T) {
 	}
 }
 
-func TestV142GuardAllowsV13ForOneTimeMigration(t *testing.T) {
+func TestV143GuardAllowsV13ForOneTimeMigration(t *testing.T) {
 	guard := protocolCompatibilityGuard{}
 	stopped := false
 	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.3","protocolMin":41,"protocolMax":41,"v":41}`)
@@ -45,26 +45,26 @@ func TestV142GuardAllowsV13ForOneTimeMigration(t *testing.T) {
 		t.Fatal("supported V1.3 packet should continue through telemetry decoding")
 	}
 	if stopped {
-		t.Fatal("V1.3 migration must not stop Bridge V1.42")
+		t.Fatal("V1.3 migration must not stop Bridge V1.43")
 	}
 }
 
-func TestV142GuardAcceptsSynchronizedRelease(t *testing.T) {
-	guard := protocolCompatibilityGuard{}
-	stopped := false
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.42","protocolMin":43,"protocolMax":43,"v":43}`)
-	if consumed := guard.handlePacket(packet, false, func() { stopped = true }); consumed {
-		t.Fatal("synchronized V1.42 packet should continue through telemetry decoding")
-	}
-	if stopped {
-		t.Fatal("synchronized V1.42 release must not stop")
-	}
-}
-
-func TestV142GuardStopsNewerProjectRelease(t *testing.T) {
+func TestV143GuardAcceptsSynchronizedRelease(t *testing.T) {
 	guard := protocolCompatibilityGuard{}
 	stopped := false
 	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.43","protocolMin":43,"protocolMax":43,"v":43}`)
+	if consumed := guard.handlePacket(packet, false, func() { stopped = true }); consumed {
+		t.Fatal("synchronized V1.43 packet should continue through telemetry decoding")
+	}
+	if stopped {
+		t.Fatal("synchronized V1.43 release must not stop")
+	}
+}
+
+func TestV143GuardStopsNewerProjectRelease(t *testing.T) {
+	guard := protocolCompatibilityGuard{}
+	stopped := false
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.44","protocolMin":43,"protocolMax":43,"v":43}`)
 	if consumed := guard.handlePacket(packet, false, func() { stopped = true }); !consumed {
 		t.Fatal("newer mod release must be consumed by version guard")
 	}

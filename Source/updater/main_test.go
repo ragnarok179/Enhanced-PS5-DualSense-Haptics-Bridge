@@ -303,7 +303,7 @@ func TestVerifyBridgeRuntimePackageDoesNotRequireProjectReleaseMetadata(t *testi
 	if fileExists(filepath.Join(root, "PROJECT_RELEASE.json")) {
 		t.Fatal("PROJECT_RELEASE.json must not exist in this test package")
 	}
-	if err := verifyBridgeRuntimePackage(root, "V1.42"); err != nil {
+	if err := verifyBridgeRuntimePackage(root, "V1.43"); err != nil {
 		t.Fatalf("valid Bridge package without PROJECT_RELEASE.json was rejected: %v", err)
 	}
 }
