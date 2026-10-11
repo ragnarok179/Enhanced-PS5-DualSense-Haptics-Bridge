@@ -156,7 +156,7 @@ Each direction can be configured as:
 **Mod installed but no feedback?** Make sure the mod is enabled in BeamNG's Mod Manager, then reload Lua with **Ctrl+L**. If it still does not initialize, restart BeamNG.
 
 - Do not run DSX, DS4Windows or another application that controls DualSense haptics or LEDs at the same time.
-- **USB: all Windows and BeamNG audio comes out of the DualSense instead of your PC speakers or headphones:** Windows may automatically select **Wireless Controller / DualSense** as the default playback device when you plug in the controller. **Fix:** Open **Windows Settings > System > Sound > Output** and select your normal speakers or headphones as the default output. If BeamNG still sends audio to the controller, check its output in **Settings > System > Sound > Volume mixer** and restart the game. **Keep the DualSense audio device enabled**: the Bridge uses it for USB stereo haptics and dedicated collision sounds on the controller speaker. The Bridge warns at startup if Windows is using the DualSense as the default output; it does not change your Windows sound settings.
+- **USB audio:** Make sure Windows does not select the DualSense as the default audio output, otherwise all Windows and game sounds will play through the controller. Go to **Windows Settings > System > Sound > Output** and select your usual speakers or headphones.
 - If the DualSense does not work correctly in BeamNG, disable Steam Input for BeamNG in **Steam > Properties > Controller**.
 - Make sure Microsoft GameInput 3.0 or newer is installed. GameInput can be installed or updated from an administrator terminal using: `winget install Microsoft.GameInput`
 - Updating the DualSense firmware through PlayStation Accessories is recommended.
