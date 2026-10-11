@@ -367,6 +367,28 @@ func deviceID(dev uintptr) string {
 	return s
 }
 
+// defaultUSBPlaybackRoles checks whether Windows (not the Bridge) routes
+// regular system sound to the controller. It never changes device defaults.
+func defaultUSBPlaybackRoles(enumerator uintptr, hapticEndpointID string) []string {
+	if enumerator == 0 { return nil }
+	roles := []struct{ id uintptr; label string }{
+		{0, "system/game audio"}, {1, "multimedia audio"},
+	}
+	var matches []string
+	for _, role := range roles {
+		var dev uintptr
+		// IMMDeviceEnumerator.GetDefaultAudioEndpoint, COM vtable index 4.
+		hr, _, _ := comCall(enumerator, 4, eRender, role.id, uintptr(unsafe.Pointer(&dev)))
+		if hresultFailed(hr) || dev == 0 { continue }
+		id, name := deviceID(dev), deviceFriendlyName(dev)
+		comRelease(dev)
+		if isDualSenseDefaultPlayback(id, name, hapticEndpointID) {
+			matches = append(matches, role.label)
+		}
+	}
+	return matches
+}
+
 func deviceState(dev uintptr) uint32 {
 	var s uint32
 	comCall(dev, 6, uintptr(unsafe.Pointer(&s)))

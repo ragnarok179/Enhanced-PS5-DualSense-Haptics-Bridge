@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -252,6 +253,20 @@ func main() {
 
 	fmt.Println("Enhanced PS5 DualSense Bridge", bridgeDisplayVersion, "- USB")
 	fmt.Printf("Controller connected: %s\n", d.product)
+	if roles := defaultUSBPlaybackRoles(audio.enumerator, audio.endpointID); len(roles) > 0 {
+		fmt.Println()
+		fmt.Println("============================================================")
+		fmt.Println("WARNING: WINDOWS AUDIO DEFAULT IS THE DUALSENSE")
+		fmt.Printf("Affected playback roles: %s\n", strings.Join(roles, ", "))
+		fmt.Println("The Windows/BeamNG sound is routed through the controller.")
+		fmt.Println("Windows Settings > System > Sound > Output:")
+		fmt.Println("Select your normal speakers/headphones as the default.")
+		fmt.Println("KEEP the DualSense audio device enabled for USB haptics")
+		fmt.Println("and BeamNG collision sounds on the controller speaker.")
+		fmt.Println("The Bridge never changes Windows audio-output preferences.")
+		fmt.Println("============================================================")
+		fmt.Println()
+	}
 	if diagnosticStatus {
 		actualBufferMS := float64(audio.bufferFrames) * 1000.0 / float64(audio.sampleRate)
 		v, profilePath, profileHash := feelProfileInfo()
