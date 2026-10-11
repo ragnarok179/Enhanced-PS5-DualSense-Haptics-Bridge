@@ -728,9 +728,25 @@ func applyAdaptiveThrottleTrigger(t telemetry, now time.Time, state *adaptiveThr
 		return t, true, severity, targetPosition, state.currentPosition
 	}
 
-	// No slip: keep the validated constant accelerator resistance on the normalized 0..255 scale.
+	// No wheel slip: keep the semantic R2 strengths received from BeamNG.
+	// The user-configured Start/End force has already been converted to the
+	// 0..255 lattice in normalizeSemanticTriggerEffects. Replacing it with the
+	// fixed feel profile here would make the R2 sliders ineffective.
 	state.currentPosition = 0
 	state.currentStrength = 0
+	if t.R2Effect != nil {
+		// The disabled normal trigger must never be reactivated by fallback.
+		if t.R2Mode == 0 {
+			return t, false, 0, 0, 0
+		}
+		if t.R2Mode == 1 {
+			t.R2StartStrength = clampInt(t.R2StartStrength, 1, 255)
+			t.R2EndStrength = clampInt(t.R2EndStrength, 1, 255)
+			t.R2Amplitude, t.R2Hz = 0, 0
+			return t, false, 0, 0, 0
+		}
+	}
+	// Legacy packets without a semantic resistance retain the old baseline.
 	t.R2Mode = 1
 	t.R2StartZone = 0
 	cfg := feelProfile().Triggers.R2

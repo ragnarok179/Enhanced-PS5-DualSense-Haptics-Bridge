@@ -393,6 +393,33 @@ func TestSharedR2BaselineAndSlip(t *testing.T) {
 	}
 }
 
+// Regression: custom R2 force fields must survive the no-slip path.
+func TestSharedR2NormalSemanticStrengthsAndOff(t *testing.T) {
+	var state adaptiveThrottleTriggerState
+	now := time.Unix(7020, 0)
+	raw := &rawTelemetry{EngineRunning: true, DrivenSlip: 0}
+	command := telemetry{
+		Active: true, R2Mode: 1, R2StartZone: 2,
+		R2StartStrength: 12, R2EndStrength: 187,
+		R2Effect: &triggerEffectWire{Kind: "resistance"},
+		Raw: raw,
+	}
+	got, slip, _, _, _ := applyAdaptiveThrottleTrigger(command, now, &state, false)
+	if slip || got.R2Mode != 1 || got.R2StartZone != 2 ||
+		got.R2StartStrength != 12 || got.R2EndStrength != 187 {
+		t.Fatalf("semantic R2 forces were replaced: %+v", got)
+	}
+
+	// OFF is authoritative even with a present semantic effect object.
+	command.R2Mode = 0
+	command.R2StartStrength = 0
+	command.R2EndStrength = 0
+	got, slip, _, _, _ = applyAdaptiveThrottleTrigger(command, now.Add(time.Millisecond), &state, false)
+	if slip || got.R2Mode != 0 || got.R2StartStrength != 0 || got.R2EndStrength != 0 {
+		t.Fatalf("semantic R2 OFF was re-enabled: %+v", got)
+	}
+}
+
 func TestSharedR2AirborneIsExactOneOver255(t *testing.T) {
 	var state adaptiveThrottleTriggerState
 	now := time.Unix(7050, 0)
@@ -1531,7 +1558,7 @@ func TestDecodeTelemetryAcceptsV14OnProtocol42(t *testing.T) {
 	if got.R2Mode != 1 || got.R2StartStrength != 32 || got.R2EndStrength != 64 {
 		t.Fatalf("V1.4 R2 semantic conversion mismatch: %+v", got)
 	}
-	if summary := telemetryConnectionSummary(got); summary != "BeamNG connected - mod V1.4 / Bridge V1.42." {
+	if summary := telemetryConnectionSummary(got); summary != "BeamNG connected - mod V1.4 / Bridge V1.43." {
 		t.Fatalf("unexpected summary: %q", summary)
 	}
 }
@@ -1570,7 +1597,7 @@ func TestProtocol43AcceptsUnifiedV142Release(t *testing.T) {
 	if !ok {
 		t.Fatal("V1.42 wire generation 43 packet was rejected")
 	}
-	if summary := telemetryConnectionSummary(got); summary != "BeamNG connected - release V1.42 synchronized." {
+	if summary := telemetryConnectionSummary(got); summary != "BeamNG connected - mod V1.42 / Bridge V1.43." {
 		t.Fatalf("unexpected V1.42 summary: %q", summary)
 	}
 	if msg := telemetryCompatibilityError(packet); msg != "" {
