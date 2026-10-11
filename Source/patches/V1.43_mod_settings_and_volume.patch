@@ -1,0 +1,47 @@
+--- a/BeamNG-Mod/lua/dualsensePhysicsHaptics/config.lua
++++ b/BeamNG-Mod/lua/dualsensePhysicsHaptics/config.lua
+@@ -3,7 +3,7 @@
+ 
+   compatibility = {
+     protocolId = "DPH",
+-    modVersion = "V1.42",
++    modVersion = "V1.43",
+     protocolVersion = 43,
+     protocolMin = 43,
+     protocolMax = 43,
+--- a/BeamNG-Mod/lua/ge/extensions/dualsenseControllerSpeaker.lua
++++ b/BeamNG-Mod/lua/ge/extensions/dualsenseControllerSpeaker.lua
+@@ -14,9 +14,9 @@
+   output = 'dseSpeakerOutputV1'
+ }
+ 
+-local defaults = {enabled=true, volume=70, collision=true, output=0}
++local defaults = {enabled=true, volume=100, collision=true, output=0}
+ local speakerKey = 'dseSpeakerSettingsV2'
+-local state = {enabled=true, volume=70, collision=true, output=0}
++local state = {enabled=true, volume=100, collision=true, output=0}
+ 
+ local function boolValue(v, fallback)
+   if v == nil or v == '' then return fallback end
+--- a/BeamNG-Mod/mod_info/EnhancedPS5DualSenseHaptics/info.json
++++ b/BeamNG-Mod/mod_info/EnhancedPS5DualSenseHaptics/info.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "Enhanced PS5 DualSense Haptics",
+   "author": "Ragnarok179",
+-  "version": "1.42.0",
++  "version": "1.43.0",
+   "description": "DualSense integration for BeamNG with stereo haptics, adaptive triggers, RPM lighting, touchpad/motion inputs and collision-only controller-speaker audio.",
+   "category": "Other"
+ }
+--- a/BeamNG-Mod/ui/ui-vue/mods/dualsensehaptics/suiteDefaults.js
++++ b/BeamNG-Mod/ui/ui-vue/mods/dualsensehaptics/suiteDefaults.js
+@@ -20,7 +20,7 @@
+ 
+ export const SPEAKER_SETTINGS_KEY = "dseSpeakerSettingsV2"
+ 
+-export const SPEAKER_DEFAULTS = Object.freeze({ enabled: true, volume: 70, collision: true, output: 0 })
++export const SPEAKER_DEFAULTS = Object.freeze({ enabled: true, volume: 100, collision: true, output: 0 })
+ 
+ function boolLua(value) { return value ? "true" : "false" }
+ function escapeLuaString(value) { return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'") }
