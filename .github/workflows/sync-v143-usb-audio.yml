@@ -1,0 +1,89 @@
+name: Synchronize V1.43 USB audio warning binaries
+on:
+  push:
+    paths:
+      - .github/workflows/sync-v143-usb-audio.yml
+permissions:
+  contents: write
+jobs:
+  rebuild:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Validate V1.43
+        working-directory: Source
+        run: |
+          python scripts/validate_update_safety.py --repo-root ..
+          go test ./...
+          go vet ./...
+      - name: Compile runtime Windows executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd Source
+          export GOOS=windows GOARCH=amd64 CGO_ENABLED=0
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -tags bluetooth -o ../Bridge/EnhancedPS5DualSenseHapticsBluetooth.exe .
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -tags usb -o ../Bridge/EnhancedPS5DualSenseHapticsUSB.exe .
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o ../START_BRIDGE.exe ./launcher
+          cp ../START_BRIDGE.exe ../START_BRIDGE_AND_BEAMNG.exe
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o ../UPDATE_DUALSENSE.exe ./updater
+          cp ../UPDATE_DUALSENSE.exe ../UPDATE_BRIDGE.exe
+      - name: Regenerate runtime manifest and Bridge ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile, re
+          root=pathlib.Path(".")
+          root_names=[
+              'BRIDGE_COMPATIBILITY.json','START_BRIDGE.exe','START_BRIDGE_AND_BEAMNG.exe',
+              'UPDATE_BRIDGE.exe','UPDATE_DUALSENSE.exe','README.md','LICENSE',
+              'THIRD_PARTY_NOTICES.md','IMPORTANT_GUIDE_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt'
+          ]
+          f=[root/x for x in root_names]
+          f += [x for d in ['Bridge','Config','Diagnostics'] for x in (root/d).rglob('*') if x.is_file()]
+          exclude={'Config/user_settings.json','Config/pending_bridge_compatibility.json'}
+          f=sorted((x for x in f if x.as_posix() not in exclude and not x.as_posix().startswith('Diagnostics/Logs/')),key=lambda x:x.as_posix())
+          assert len(f)==15, [x.as_posix() for x in f]
+          for p in f: assert p.exists()
+          manifest=''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  ./'+p.as_posix()+'\n' for p in f)
+          (root/'SHA256SUMS.txt').write_text(manifest,encoding='utf8')
+          f.append(root/'SHA256SUMS.txt')
+          dst=root/'Release/Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip'
+          with zipfile.ZipFile(dst,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for p in sorted(f,key=lambda p:p.as_posix()):
+                  info=zipfile.ZipInfo(p.as_posix(),date_time=(2026,10,11,12,0,0))
+                  info.compress_type=zipfile.ZIP_DEFLATED
+                  info.external_attr=0o644<<16
+                  z.writestr(info,p.read_bytes(),compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          with zipfile.ZipFile(dst) as z:
+              assert z.testzip() is None
+              assert len(z.namelist())==16
+              for p in f:
+                  assert z.read(p.as_posix())==p.read_bytes()
+          assets=['Enhanced_PS5_DualSense_Haptics_V1.43.zip',
+                  'Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip',
+                  'BRIDGE_COMPATIBILITY.json']
+          (root/'Release/BRIDGE_COMPATIBILITY.json').write_bytes((root/'BRIDGE_COMPATIBILITY.json').read_bytes())
+          (root/'Release/RELEASE_SHA256SUMS.txt').write_text(
+              ''.join(hashlib.sha256((root/'Release'/name).read_bytes()).hexdigest()+'  '+name+'\n'
+                      for name in assets),encoding='utf8')
+          print('Bridge manifest and release asset checksums synchronized.')
+          PY
+      - name: Commit binaries and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/sync-v143-usb-audio.yml
+          git add Bridge START_BRIDGE.exe START_BRIDGE_AND_BEAMNG.exe UPDATE_BRIDGE.exe UPDATE_DUALSENSE.exe SHA256SUMS.txt Release/Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip Release/RELEASE_SHA256SUMS.txt Release/BRIDGE_COMPATIBILITY.json
+          git diff --cached --check
+          git commit -m "Rebuild V1.43 USB bridge with default audio endpoint diagnostics"
+          git push origin HEAD:main
