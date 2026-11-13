@@ -1,5 +1,5 @@
 export const SETTINGS_KEY = "dphSettings"
-export const SETTINGS_SCHEMA = 12
+export const SETTINGS_SCHEMA = 14
 
 const HAPTIC_REFERENCE_PERCENT = 100
 const SURFACE_MASTER_REFERENCE_PERCENT = 100
@@ -50,14 +50,22 @@ export function createDefaults() {
     adaptiveTriggers: {
       l2BrakeEnabled: true,
       l2BrakeStartPercent: 25,
+      l2StartPositionPercent: 0,
+      l2EndPositionPercent: 100,
       l2BrakeEndPercent: 75,
       absEnabled: true,
       absPercent: 75,
       r2ThrottleEnabled: true,
       r2ThrottleStartPercent: 13,
+      r2StartPositionPercent: 0,
+      r2EndPositionPercent: 100,
       r2ThrottleEndPercent: 13,
       r2EffectsEnabled: true,
       r2EffectsPercent: R2_JOLT_REFERENCE_PERCENT,
+      r2LimiterEnabled: true,
+      r2TcsEnabled: true,
+      r2WheelspinPulseEnabled: true,
+      r2WheelspinPulsePercent: 35,
     },
     lighting: {
       enabled: true,
@@ -82,6 +90,12 @@ export function clampPercent(value, fallback = 100) {
   const number = Number(value)
   if (!Number.isFinite(number)) return fallback
   return Math.max(1, Math.min(100, Math.round(number)))
+}
+
+export function clampPositionPercent(value, fallback = 0) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.max(0, Math.min(90, Math.round(number)))
 }
 
 export function clampFinePercent(value, fallback = 1) {
@@ -174,6 +188,11 @@ export function normalizeSettings(source) {
     d.adaptiveTriggers.l2BrakeEndPercent = legacyL2End
     d.adaptiveTriggers.l2BrakeStartPercent = Math.max(1, Math.min(legacyL2End, Math.round(legacyL2End * 0.25)))
   }
+  d.adaptiveTriggers.l2StartPositionPercent = clampPositionPercent(t.l2StartPositionPercent, 0)
+  d.adaptiveTriggers.r2StartPositionPercent = clampPositionPercent(t.r2StartPositionPercent, 0)
+  const clampEnd = (value, start) => Math.max(start + 1, Math.min(100, Math.round(Number.isFinite(Number(value)) ? Number(value) : 100)))
+  d.adaptiveTriggers.l2EndPositionPercent = clampEnd(t.l2EndPositionPercent, d.adaptiveTriggers.l2StartPositionPercent)
+  d.adaptiveTriggers.r2EndPositionPercent = clampEnd(t.r2EndPositionPercent, d.adaptiveTriggers.r2StartPositionPercent)
   d.adaptiveTriggers.absEnabled = t.absEnabled !== false
   d.adaptiveTriggers.absPercent = clampPercent(t.absPercent, 75)
   d.adaptiveTriggers.r2ThrottleEnabled = t.r2ThrottleEnabled !== false
@@ -186,6 +205,10 @@ export function normalizeSettings(source) {
     d.adaptiveTriggers.r2ThrottleEndPercent = legacyR2
   }
   d.adaptiveTriggers.r2EffectsEnabled = t.r2EffectsEnabled !== false
+  d.adaptiveTriggers.r2LimiterEnabled = t.r2LimiterEnabled !== false
+  d.adaptiveTriggers.r2TcsEnabled = t.r2TcsEnabled !== false
+  d.adaptiveTriggers.r2WheelspinPulseEnabled = t.r2WheelspinPulseEnabled !== false
+  d.adaptiveTriggers.r2WheelspinPulsePercent = clampPercent(t.r2WheelspinPulsePercent, 35)
   const oldR2 = clampPercent(t.r2EffectsPercent, oldSchema >= 3 ? R2_JOLT_REFERENCE_PERCENT : 100)
   d.adaptiveTriggers.r2EffectsPercent = oldSchema >= 3
     ? oldR2

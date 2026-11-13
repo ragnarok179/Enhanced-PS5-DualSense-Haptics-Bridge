@@ -57,8 +57,9 @@ func (e *sharedFeelEngine) step(latest telemetry, lastPacket, now time.Time, fra
 	var absPhase string
 	control, absActive, absPhase, _, _, _, _ = applyABSHybridPulse(control, now, &e.absState)
 	shiftCut := !e.shiftTorqueCutUntil.IsZero() && now.Before(e.shiftTorqueCutUntil)
-	control, _, _, _, _ = applyAdaptiveThrottleTrigger(control, now, &e.r2State, shiftCut)
-	control = applyUserTriggerPreferences(control, absActive)
+	var adaptiveR2Override bool
+	control, adaptiveR2Override, _, _, _ = applyAdaptiveThrottleTrigger(control, now, &e.r2State, shiftCut)
+	control = applyUserTriggerPreferences(control, absActive, adaptiveR2Override)
 	e.mixer.setSharedDynamics(absActive && absPhase == "kick")
 
 	rgb := e.led.update(control, now)

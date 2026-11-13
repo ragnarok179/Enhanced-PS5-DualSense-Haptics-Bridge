@@ -31,6 +31,11 @@ export function legacyPresetMapping(mode) {
   return { ...DEFAULT_CUSTOM_MAPPING }
 }
 
+export const MIC_MUTE_MODE_SETTINGS_KEY = "dseMicMuteInputModeV1"
+export const MIC_MUTE_INVERT_SETTINGS_KEY = "dseMicMuteInvertedV1"
+export const MIC_MUTE_MODE_OPTIONS = ["button", "toggle"]
+export const normalizeMicMuteMode = (value) => value === "toggle" ? "toggle" : "button"
+
 export const MOUSE_MODE_SETTINGS_KEY = "dseTouchpadMouseModeV1"
 export const TWO_FINGER_MOUSE_TOGGLE_SETTINGS_KEY = "dseTouchpadTwoFingerMouseToggleV1"
 export function normalizeBooleanSetting(value, fallback = false) {

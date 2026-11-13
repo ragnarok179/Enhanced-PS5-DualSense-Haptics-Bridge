@@ -303,7 +303,38 @@ func TestVerifyBridgeRuntimePackageDoesNotRequireProjectReleaseMetadata(t *testi
 	if fileExists(filepath.Join(root, "PROJECT_RELEASE.json")) {
 		t.Fatal("PROJECT_RELEASE.json must not exist in this test package")
 	}
-	if err := verifyBridgeRuntimePackage(root, "V1.43"); err != nil {
+	if err := verifyBridgeRuntimePackage(root, "V1.50"); err != nil {
 		t.Fatalf("valid Bridge package without PROJECT_RELEASE.json was rejected: %v", err)
+	}
+}
+
+// The shipped V1.43 updater must recognize a complete V1.50 stable release.
+// No GitHub or Windows installation is touched by this offline contract test.
+func TestV143UpdaterSelectsV150CompleteStableRelease(t *testing.T) {
+	releases := []githubRelease{
+		{TagName: "V1.50", Prerelease: true, Assets: []githubAsset{
+			{Name: "Enhanced_PS5_DualSense_Haptics_V1.50.zip", BrowserDownloadURL: "https://example.invalid/preview-mod.zip"},
+			{Name: "Enhanced_PS5_DualSense_Haptics_Bridge_V1.50.zip", BrowserDownloadURL: "https://example.invalid/preview-bridge.zip"},
+		}},
+		{TagName: "V1.50", Assets: []githubAsset{
+			{Name: "Enhanced_PS5_DualSense_Haptics_V1.50.zip", BrowserDownloadURL: "https://example.invalid/mod.zip"},
+			{Name: "Enhanced_PS5_DualSense_Haptics_Bridge_V1.50.zip", BrowserDownloadURL: "https://example.invalid/bridge.zip"},
+		}},
+		{TagName: "V1.43", Assets: []githubAsset{
+			{Name: "Enhanced_PS5_DualSense_Haptics_V1.43.zip", BrowserDownloadURL: "https://example.invalid/old-mod.zip"},
+			{Name: "Enhanced_PS5_DualSense_Haptics_Bridge_V1.43.zip", BrowserDownloadURL: "https://example.invalid/old-bridge.zip"},
+		}},
+	}
+	selected, ok := selectUnifiedProjectRelease(releases, "V1.43")
+	if !ok || selected.Version != "V1.50" || selected.BridgeAsset.Name != "Enhanced_PS5_DualSense_Haptics_Bridge_V1.50.zip" {
+		t.Fatalf("V1.43 did not select complete stable V1.50: %+v ok=%t", selected, ok)
+	}
+	if selected.ModAsset.Name != "Enhanced_PS5_DualSense_Haptics_V1.50.zip" {
+		t.Fatalf("V1.43 did not stage matching V1.50 mod: %+v", selected.ModAsset)
+	}
+	releases[1].Assets = releases[1].Assets[:1] // Missing Bridge must not be mistaken for a complete update.
+	selected, ok = selectUnifiedProjectRelease(releases, "V1.43")
+	if !ok || selected.Version != "V1.43" {
+		t.Fatalf("incomplete V1.50 should be ignored; got %+v ok=%t", selected, ok)
 	}
 }

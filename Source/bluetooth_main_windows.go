@@ -245,6 +245,8 @@ func main() {
 	seedBluetoothIdleBaseline(time.Now())
 
 	deadline := time.Now().Add(interval)
+	var lastMuteGen uint64
+	lastMuteSent := time.Time{}
 	for {
 		if !waitUntil(deadline, done) {
 			neutral := telemetry{Version: protocolVersion, Active: false}
@@ -326,6 +328,7 @@ func main() {
 		latest, lastPacket := mixer.snapshot()
 		canonicalFrames := canonicalFramesForBluetoothFrames(frames)
 		frame := feelEngine.step(latest, lastPacket, now, canonicalFrames)
+		micApply, micOn, micGen := micMuteLEDUpdateDue(lastMuteGen, lastMuteSent, now)
 		controlState := frame.Control
 		rgb := frame.RGB
 		canonicalSamples := frame.Samples
@@ -352,7 +355,7 @@ func main() {
 				fmt.Printf("SPEAKER_BT_SETUP seq=%d enabled=%t volume=%d%% result=error err=%v\n", setupSeq, cfg.enabled, cfg.volume, err)
 			}
 		}
-		state63 := buildBluetoothSetStateData63ExternalRGB(controlState)
+		state63 := buildBluetoothStateWithMuteLED(controlState, micApply, micOn)
 		report := buildBluetoothAllInOneReport36WithSpeaker(hapticSeq, audioCounter, samples, state63, speaker.nextBluetoothFrame())
 		if diagnosticStatus && !firstHeaderLogged {
 			headerLen := 16
@@ -379,6 +382,9 @@ func main() {
 			requestStop()
 			return
 		} else {
+			if micApply {
+				lastMuteGen, lastMuteSent = micGen, now
+			}
 			writes++
 		}
 

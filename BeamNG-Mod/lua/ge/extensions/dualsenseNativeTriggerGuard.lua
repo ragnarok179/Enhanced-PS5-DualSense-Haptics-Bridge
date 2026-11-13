@@ -11,7 +11,6 @@
 -- and the normal accelerator/brake input bindings remain untouched.
 
 local M = {}
-
 local INITIAL_DELAY = 0.25
 local RETRY_DELAY = 0.45
 local DEFAULT_ATTEMPTS = 2

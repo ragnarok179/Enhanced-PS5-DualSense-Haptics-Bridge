@@ -1558,7 +1558,7 @@ func TestDecodeTelemetryAcceptsV14OnProtocol42(t *testing.T) {
 	if got.R2Mode != 1 || got.R2StartStrength != 32 || got.R2EndStrength != 64 {
 		t.Fatalf("V1.4 R2 semantic conversion mismatch: %+v", got)
 	}
-	if summary := telemetryConnectionSummary(got); summary != "BeamNG connected - mod V1.4 / Bridge V1.43." {
+	if summary := telemetryConnectionSummary(got); summary != "BeamNG connected - mod V1.4 / Bridge V1.50." {
 		t.Fatalf("unexpected summary: %q", summary)
 	}
 }
@@ -1597,7 +1597,7 @@ func TestProtocol43AcceptsUnifiedV142Release(t *testing.T) {
 	if !ok {
 		t.Fatal("V1.42 wire generation 43 packet was rejected")
 	}
-	if summary := telemetryConnectionSummary(got); summary != "BeamNG connected - mod V1.42 / Bridge V1.43." {
+	if summary := telemetryConnectionSummary(got); summary != "BeamNG connected - mod V1.42 / Bridge V1.50." {
 		t.Fatalf("unexpected V1.42 summary: %q", summary)
 	}
 	if msg := telemetryCompatibilityError(packet); msg != "" {

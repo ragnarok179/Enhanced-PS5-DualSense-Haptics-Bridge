@@ -5,8 +5,17 @@ Bridge/*.exe
 START_BRIDGE.exe
 START_BRIDGE_AND_BEAMNG.exe
 UPDATE_BRIDGE.exe
+UPDATE_DUALSENSE.exe
 SHA256SUMS.txt
 Config/user_settings.json
 *.log
 
 Config/pending_bridge_compatibility.json
+
+# Release artifacts are built from the tagged source; do not commit generated binaries.
+Release/*.zip
+Release/*SHA256SUMS.txt
+Release/BUILD_PROVENANCE.txt
+Source/.release-build/
+__pycache__/
+*.pyc

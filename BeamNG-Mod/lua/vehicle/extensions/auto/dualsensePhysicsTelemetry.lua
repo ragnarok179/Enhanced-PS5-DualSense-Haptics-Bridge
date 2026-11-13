@@ -1288,8 +1288,10 @@ local function buildPacket(dt)
     (state.tcsSamples >= (tc.tcsDebounceSamples or 2) or state.tcsRelease > 0)
 
   local meanDrivenSlip = wc.drivenCount > 0 and wc.drivenSlip / wc.drivenCount or 0
-  local wheelspinRaw = groundControl and wc.groundedDrivenCount > 0 and not tcsActive and
-    speedMS >= (tc.wheelspinMinSpeedMS or 3.0) and
+  -- Observe physical wheel slip even while ESC/TCS intervenes or during a
+  -- stationary burnout. The Bridge multiplexes a brief wheelspin pulse with
+  -- TCS feedback; rev-limiter remains authoritative.
+  local wheelspinRaw = groundControl and wc.groundedDrivenCount > 0 and
     throttle >= (tc.wheelspinMinThrottle or 0.22) and
     meanDrivenSlip >= (tc.wheelspinSlipStart or 7.5)
   if wheelspinRaw then state.wheelspinSamples = state.wheelspinSamples + 1 else state.wheelspinSamples = 0 end
@@ -1317,6 +1319,10 @@ local function buildPacket(dt)
   updateShift(dt, clutch, gear, shifting, speedMS, throttle, torqueNorm)
 
   local userTriggers = currentUserSettings.adaptiveTriggers
+  local brakePosition = math.max(0, math.min(0.90, (tonumber(userTriggers.l2StartPositionPercent) or 0) / 100))
+  local throttlePosition = math.max(0, math.min(0.90, (tonumber(userTriggers.r2StartPositionPercent) or 0) / 100))
+  local brakeEndPosition = math.max(brakePosition + 0.01, math.min(1, (tonumber(userTriggers.l2EndPositionPercent) or 100) / 100))
+  local throttleEndPosition = math.max(throttlePosition + 0.01, math.min(1, (tonumber(userTriggers.r2EndPositionPercent) or 100) / 100))
   local brakePrepared = tc.enabled and groundControl and tc.brakePreloadEnabled ~= false
     and userTriggers.l2BrakeEnabled ~= false
   if state.airborne and tc.airborneReleaseNormalTriggers ~= false then brakePrepared = false end
@@ -1326,14 +1332,14 @@ local function buildPacket(dt)
     local startForce = USER_SETTINGS.percentUnit(userTriggers.l2BrakeStartPercent, 25)
     local endForce = USER_SETTINGS.percentUnit(userTriggers.l2BrakeEndPercent, 75)
     if brakeActive then
-      l2Effect = TRIGGER.resistance(tc.brakeStartPosition or 0, startForce, endForce, l2Effect)
+      l2Effect = TRIGGER.resistance(brakePosition, startForce, endForce, l2Effect, brakeEndPosition)
       state.l2Level = lerp(startForce, endForce, brake)
     else
       -- The idle preload must follow the same UI resistance, not a fixed
       -- hard-coded force. Preserve the original stock preload ratio.
       local defaultStart = math.max(tc.brakeNormalStartForce or 0.25, 0.001)
       local preload = clamp01(startForce * (tc.brakePreloadForce or 0.125) / defaultStart)
-      l2Effect = TRIGGER.resistance(tc.brakeStartPosition or 0, preload, preload, l2Effect)
+      l2Effect = TRIGGER.resistance(brakePosition, preload, preload, l2Effect, brakeEndPosition)
       state.l2Level = preload
     end
   else
@@ -1364,7 +1370,7 @@ local function buildPacket(dt)
   if throttlePrepared then
     local startForce = USER_SETTINGS.percentUnit(userTriggers.r2ThrottleStartPercent, 13)
     local endForce = USER_SETTINGS.percentUnit(userTriggers.r2ThrottleEndPercent, 13)
-    r2Effect = TRIGGER.resistance(tc.throttleStartPosition or 0, startForce, endForce, r2Effect)
+    r2Effect = TRIGGER.resistance(throttlePosition, startForce, endForce, r2Effect, throttleEndPosition)
     state.r2Level = startForce
   else
     state.r2Level = 0
@@ -1375,21 +1381,21 @@ local function buildPacket(dt)
     state.r2Level = 0
   end
 
-  if limiterActive then
+  if limiterActive and userTriggers.r2LimiterEnabled ~= false then
     r2Effect = TRIGGER.vibration(0, tc.revLimiterAmplitude or 0.125, tc.revLimiterHz or 24, r2Effect)
   elseif state.shiftFineActive and tc.shiftFineReleaseEnabled ~= false then
     r2Effect = TRIGGER.fine(tc.shiftReleasePosition or 0, tc.shiftReleaseForce or 0.0208333333, r2Effect)
     state.r2Level = 0
-  elseif tcsActive then
+  elseif tcsActive and userTriggers.r2TcsEnabled ~= false then
     local strongTCS = meanDrivenSlip >= (tc.tcsStrongSlip or 18.0)
     r2Effect = TRIGGER.vibration(0,
       strongTCS and (tc.tcsAmplitudeStrong or 0.25) or (tc.tcsAmplitudeSoft or 0.125),
       strongTCS and (tc.tcsHzStrong or 22) or (tc.tcsHzSoft or 19), r2Effect)
   elseif wheelspinActive then
     if userTriggers.r2ThrottleEnabled ~= false then
-      r2Effect = TRIGGER.resistance(tc.throttleStartPosition or 0,
+      r2Effect = TRIGGER.resistance(throttlePosition,
         USER_SETTINGS.percentUnit(userTriggers.r2ThrottleStartPercent, 13),
-        USER_SETTINGS.percentUnit(userTriggers.r2ThrottleEndPercent, 13), r2Effect)
+        USER_SETTINGS.percentUnit(userTriggers.r2ThrottleEndPercent, 13), r2Effect, throttleEndPosition)
     end
   end
 
@@ -1401,7 +1407,7 @@ local function buildPacket(dt)
     if userR2.r2ThrottleEnabled ~= false then
       local startForce = USER_SETTINGS.percentUnit(userR2.r2ThrottleStartPercent or userR2.r2ThrottlePercent, 13)
       local endForce = USER_SETTINGS.percentUnit(userR2.r2ThrottleEndPercent or userR2.r2ThrottlePercent, 13)
-      r2Effect = TRIGGER.resistance(tc.throttleStartPosition or 0, startForce, endForce, r2Effect)
+      r2Effect = TRIGGER.resistance(throttlePosition, startForce, endForce, r2Effect, throttleEndPosition)
       state.r2Level = startForce
     else
       r2Effect = TRIGGER.off(r2Effect)

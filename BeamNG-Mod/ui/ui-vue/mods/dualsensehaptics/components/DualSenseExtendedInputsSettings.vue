@@ -13,6 +13,19 @@
     <template v-else>
       <div class="group mapping-group">
         <div class="group-title-row">
+          <h3>Mic Mute button</h3>
+          <div class="mouse-policy-picker" role="group" aria-label="Mic Mute input behavior">
+            <button type="button" class="toggle-button" :class="{ active: micMuteMode === 'button' }" :aria-pressed="micMuteMode === 'button'" @click="setMicMuteMode('button')">Button</button>
+            <button type="button" class="toggle-button" :class="{ active: micMuteMode === 'toggle' }" :aria-pressed="micMuteMode === 'toggle'" @click="setMicMuteMode('toggle')">Toggle</button>
+          </div>
+        </div>
+        <label v-if="micMuteMode === 'toggle'" class="feature-title compact-title">
+          <input type="checkbox" :checked="micMuteInverted" @change="setMicMuteInverted($event.target.checked)" />
+          <span>Invert Mute LED state</span>
+        </label>
+      </div>
+      <div class="group mapping-group">
+        <div class="group-title-row">
           <h3>Touchpad</h3>
           <button type="button" class="toggle-button" :class="{ active: mouseMode }" @click="setMouseMode(!mouseMode)">
             Mouse {{ mouseMode ? "On" : "Off" }}
@@ -276,7 +289,7 @@ import { runRaw } from "@/bridge/libs/Lua.js"
 import { getModSetting } from "../settingsStore.js"
 import {
   LEGACY_MODE_SETTINGS_KEY, CUSTOM_SETTING_KEYS, DEFAULT_CUSTOM_MAPPING, mappingOptions, customGroups,
-  normalizeChannelMapping, legacyPresetMapping, MOUSE_MODE_SETTINGS_KEY, TWO_FINGER_MOUSE_TOGGLE_SETTINGS_KEY,
+  normalizeChannelMapping, legacyPresetMapping, MIC_MUTE_MODE_SETTINGS_KEY, MIC_MUTE_INVERT_SETTINGS_KEY, normalizeMicMuteMode, MOUSE_MODE_SETTINGS_KEY, TWO_FINGER_MOUSE_TOGGLE_SETTINGS_KEY,
   normalizeBooleanSetting, BLUETOOTH_IDLE_SETTINGS_KEY, BLUETOOTH_IDLE_EXPLICIT_OFF_KEY, BLUETOOTH_IDLE_MOTION_ACTIVITY_KEY,
   DEFAULT_BLUETOOTH_IDLE_MINUTES, DEFAULT_BLUETOOTH_IDLE_MOTION_ACTIVITY, BLUETOOTH_IDLE_MAX_MINUTES, normalizeBluetoothIdleMinutes, resolveBluetoothIdleMinutes,
   motionModeOptions, motionAxisOptions, motionReferenceOptions, motionOutputOptions, motionButtonDirectionOptions, motionButtonBehaviorOptions, optionLabel,
@@ -288,6 +301,8 @@ const loading = ref(true)
 const loadError = ref("")
 const customMapping = reactive({ ...DEFAULT_CUSTOM_MAPPING })
 const mouseMode = ref(false)
+const micMuteMode = ref("button")
+const micMuteInverted = ref(false)
 const bluetoothIdleMinutes = ref(DEFAULT_BLUETOOTH_IDLE_MINUTES)
 const bluetoothIdleMotionActivity = ref(DEFAULT_BLUETOOTH_IDLE_MOTION_ACTIVITY)
 const openMotionMenu = ref("")
@@ -327,6 +342,8 @@ async function applyCustomToLua(channel, mapping) {
   await runRaw(`extensions.dualsenseExtendedInputs.setTouchpadCustomMapping('${escapeLuaString(channel)}','${escapeLuaString(mapping)}')`)
 }
 async function applyAllCustomToLua() { for (const channel of Object.keys(CUSTOM_SETTING_KEYS)) await applyCustomToLua(channel, customMapping[channel]) }
+async function applyMicMuteModeToLua(value) { await runRaw(`extensions.dualsenseExtendedInputs.setMicMuteInputMode('${value}')`) }
+async function applyMicMuteInversionToLua(value) { await runRaw(`extensions.dualsenseExtendedInputs.setMicMuteInverted(${boolLua(value)})`) }
 async function applyMouseModeToLua(value) { await runRaw(`extensions.dualsenseExtendedInputs.setTouchpadMouseMode(${boolLua(value)})`) }
 async function applyBluetoothIdleToLua(minutes) { await runRaw(`extensions.dualsenseExtendedInputs.setBluetoothIdleTimeoutMinutes(${minutes})`) }
 async function applyBluetoothIdleMotionToLua(value) { await runRaw(`extensions.dualsenseExtendedInputs.setBluetoothIdleMotionActivityEnabled(${boolLua(value)})`) }
@@ -404,9 +421,14 @@ async function loadSettings() {
     }
     await applyAllCustomToLua()
 
-    mouseMode.value = normalizeBooleanSetting(await getModSetting(MOUSE_MODE_SETTINGS_KEY, false), false)
-    await applyMouseModeToLua(mouseMode.value)
+    // Read the effective runtime state instead of re-applying a possibly stale
+    // stored bool on every UI open. Lua owns the auto/on/off mouse policy.
+    await refreshTouchpadRuntime()
     await disableLegacyTwoFingerShortcut()
+    micMuteMode.value = normalizeMicMuteMode(await getModSetting(MIC_MUTE_MODE_SETTINGS_KEY, "button"))
+    await applyMicMuteModeToLua(micMuteMode.value)
+    micMuteInverted.value = normalizeBooleanSetting(await getModSetting(MIC_MUTE_INVERT_SETTINGS_KEY, false), false)
+    await applyMicMuteInversionToLua(micMuteInverted.value)
 
     const idle = resolveBluetoothIdleMinutes(
       await getModSetting(BLUETOOTH_IDLE_SETTINGS_KEY, null),
@@ -432,9 +454,24 @@ async function setCustomChannel(channel, mapping) {
   customMapping[channel] = normalized
   try { await applyCustomToLua(channel, normalized) } catch (error) { console.error(error) }
 }
+async function setMicMuteMode(value) {
+  micMuteMode.value = normalizeMicMuteMode(value)
+  try { await applyMicMuteModeToLua(micMuteMode.value) } catch (error) { console.error(error) }
+}
+async function setMicMuteInverted(value) {
+  micMuteInverted.value = !!value
+  try { await applyMicMuteInversionToLua(micMuteInverted.value) } catch (error) { console.error(error) }
+}
 async function setMouseMode(value) {
-  mouseMode.value = !!value
-  try { await applyMouseModeToLua(mouseMode.value) } catch (error) { console.error(error) }
+  const previous = mouseMode.value
+  try {
+    await applyMouseModeToLua(!!value)
+    await refreshTouchpadRuntime()
+  } catch (error) {
+    mouseMode.value = previous
+    loadError.value = `Could not update touchpad mouse: ${error?.message || error}`
+    console.error(error)
+  }
 }
 
 async function setTextEntryCapture(active) {
@@ -605,6 +642,8 @@ async function resetAllSettings() {
   try {
     await resetExtendedInputsDefaults(runRaw)
     Object.assign(customMapping, DEFAULT_CUSTOM_MAPPING)
+    micMuteMode.value = "button"
+    micMuteInverted.value = false
     mouseMode.value = false
     bluetoothIdleMinutes.value = DEFAULT_BLUETOOTH_IDLE_MINUTES
     bluetoothIdleMotionActivity.value = DEFAULT_BLUETOOTH_IDLE_MOTION_ACTIVITY

@@ -7,14 +7,14 @@ import (
 )
 
 type triggerSignature struct {
-	L2Mode, L2Zone, L2Start, L2End, L2Amp, L2Hz int
-	R2Mode, R2Zone, R2Start, R2End, R2Amp, R2Hz int
+	L2Mode, L2Zone, L2EndZone, L2Start, L2End, L2Amp, L2Hz int
+	R2Mode, R2Zone, R2EndZone, R2Start, R2End, R2Amp, R2Hz int
 }
 
 func signatureForTriggers(t telemetry) triggerSignature {
 	return triggerSignature{
-		t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz,
-		t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz,
+		t.L2Mode, t.L2StartZone, t.L2EndZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz,
+		t.R2Mode, t.R2StartZone, t.R2EndZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz,
 	}
 }
 
@@ -48,7 +48,7 @@ func strength255To8(v int) int {
 	return clampInt(q, 1, 8)
 }
 
-func fillOfficialFeedback(dst []byte, startZone, startStrength, endStrength int) {
+func fillOfficialFeedback(dst []byte, startZone, startStrength, endStrength int, endExclusive ...int) {
 	for i := range dst {
 		dst[i] = 0
 	}
@@ -62,10 +62,14 @@ func fillOfficialFeedback(dst []byte, startZone, startStrength, endStrength int)
 		dst[0] = 0x05
 		return
 	}
+	endZone := 10
+	if len(endExclusive) > 0 && endExclusive[0] > 0 {
+		endZone = clampInt(endExclusive[0], startZone+1, 10)
+	}
 	var active uint16
 	var packed uint32
-	span := 9 - startZone
-	for zone := startZone; zone < 10; zone++ {
+	span := (endZone - 1) - startZone
+	for zone := startZone; zone < endZone; zone++ {
 		normalized := endStrength
 		if span > 0 {
 			x := float64(zone-startZone) / float64(span)
@@ -124,10 +128,10 @@ func fillFineFeedback(dst []byte, position, strength int) {
 	dst[0], dst[1], dst[2] = 0x01, byte(position), byte(strength)
 }
 
-func fillTrigger(dst []byte, mode, startZone, startStrength, endStrength, amplitude, hz int) {
+func fillTrigger(dst []byte, mode, startZone, startStrength, endStrength, amplitude, hz, endZone int) {
 	switch mode {
 	case 1:
-		fillOfficialFeedback(dst, startZone, startStrength, endStrength)
+		fillOfficialFeedback(dst, startZone, startStrength, endStrength, endZone)
 	case 2:
 		fillOfficialVibration(dst, startZone, amplitude, hz)
 	case 3:
@@ -328,8 +332,8 @@ func buildBluetoothSetStateData63WithFlags(t telemetry, rgb [3]byte, updateLight
 	state[2], state[3] = 0, 0
 	state[4], state[5], state[6] = 100, byte(math.Round(100*bluetoothSpeakerHardwareOutputGain)), 0x40
 	state[7], state[8], state[9] = 0x09, 0x00, 0x00
-	fillTrigger(state[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz)
-	fillTrigger(state[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz)
+	fillTrigger(state[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz, t.R2EndZone)
+	fillTrigger(state[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz, t.L2EndZone)
 	state[36], state[37] = 0x00, 0x01
 	state[38], state[39], state[40] = 0, 0, 0
 	// Do not combine RELEASE_LEDS with LIGHTBAR_SETUP/LIGHT_OUT. SDL uses the
@@ -355,6 +359,12 @@ func buildBluetoothSetStateData63ExternalRGB(t telemetry) []byte {
 	state := buildBluetoothSetStateData63WithFlags(t, [3]byte{}, false, false)
 	state[1] = 0x00
 	state[44], state[45], state[46] = 0, 0, 0
+	return state
+}
+
+func buildBluetoothStateWithMuteLED(t telemetry, apply, on bool) []byte {
+	state := buildBluetoothSetStateData63ExternalRGB(t)
+	applyMicMuteLEDReport(state[:47], apply, on)
 	return state
 }
 
@@ -396,8 +406,8 @@ func buildBluetoothControlReportMasked(sequence byte, t telemetry, rgb [3]byte, 
 	report := buildBluetoothControlBase(sequence, enable1, enable2)
 	common := report[3:50]
 	if updateTriggers {
-		fillTrigger(common[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz)
-		fillTrigger(common[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz)
+		fillTrigger(common[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz, t.R2EndZone)
+		fillTrigger(common[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz, t.L2EndZone)
 	}
 	if updateLED {
 		common[44], common[45], common[46] = rgb[0], rgb[1], rgb[2]

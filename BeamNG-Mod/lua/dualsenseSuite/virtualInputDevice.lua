@@ -4,7 +4,7 @@ local M = {}
 
 M.name = "DualSense Extended Inputs"
 M.vidpid = "dualsenseextendedv2"
-M.axisCount = 10
+M.axisCount = 11
 M.buttonCount = 23
 M.povCount = 0
 
@@ -12,6 +12,7 @@ M.touchAxisBase = 0
 M.touchButtonBase = 0
 M.sensorAxisBase = 4
 M.sensorButtonBase = 17
+M.muteToggleAxisIndex = 10 -- added after the existing 10 axes; preserves saved binding indices
 
 -- BeamNG/Torque names the first joystick axes conventionally; higher virtual
 -- axes continue with slider/slider2 and generic axisN names.
@@ -26,6 +27,7 @@ M.axisControlNames = {
   [7] = "slider2",
   [8] = "axis8",
   [9] = "axis9",
+  [10] = "axis10", -- optional Mic Mute 0/100% toggle
 }
 
 M.legacyVidPids = {

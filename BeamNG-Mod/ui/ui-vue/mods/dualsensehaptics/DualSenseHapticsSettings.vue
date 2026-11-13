@@ -92,18 +92,28 @@
               <input type="checkbox" v-model="values.adaptiveTriggers.l2BrakeEnabled" @change="scheduleSave" />
               <span>L2 brake resistance</span>
             </label>
+            <SettingRangeSlider
+              label="Start / end deadzone"
+              :start="values.adaptiveTriggers.l2StartPositionPercent"
+              :end="values.adaptiveTriggers.l2EndPositionPercent"
+              compact
+              @update:start="v => updatePosition('l2StartPositionPercent', v)"
+              @update:end="v => updatePosition('l2EndPositionPercent', v)"
+            />
+            <div class="trigger-resistance-settings">
             <SettingSlider
-              label="Start resistance"
+              label="Resistance strength at start of travel"
               :model-value="values.adaptiveTriggers.l2BrakeStartPercent"
               compact
               @update:model-value="v => updateTriggerRange('l2', 'start', v)"
             />
             <SettingSlider
-              label="End resistance"
+              label="Resistance strength at end of travel"
               :model-value="values.adaptiveTriggers.l2BrakeEndPercent"
               compact
               @update:model-value="v => updateTriggerRange('l2', 'end', v)"
             />
+            </div>
           </div>
 
           <div class="trigger-card">
@@ -124,18 +134,28 @@
               <input type="checkbox" v-model="values.adaptiveTriggers.r2ThrottleEnabled" @change="scheduleSave" />
               <span>R2 throttle resistance</span>
             </label>
+            <SettingRangeSlider
+              label="Start / end deadzone"
+              :start="values.adaptiveTriggers.r2StartPositionPercent"
+              :end="values.adaptiveTriggers.r2EndPositionPercent"
+              compact
+              @update:start="v => updatePosition('r2StartPositionPercent', v)"
+              @update:end="v => updatePosition('r2EndPositionPercent', v)"
+            />
+            <div class="trigger-resistance-settings">
             <SettingSlider
-              label="Start resistance"
+              label="Resistance strength at start of travel"
               :model-value="values.adaptiveTriggers.r2ThrottleStartPercent"
               compact
               @update:model-value="v => updateTriggerRange('r2', 'start', v)"
             />
             <SettingSlider
-              label="End resistance"
+              label="Resistance strength at end of travel"
               :model-value="values.adaptiveTriggers.r2ThrottleEndPercent"
               compact
               @update:model-value="v => updateTriggerRange('r2', 'end', v)"
             />
+            </div>
           </div>
 
           <div class="trigger-card">
@@ -148,6 +168,15 @@
               :model-value="values.adaptiveTriggers.r2EffectsPercent"
               compact
               @update:model-value="v => updatePercent(values.adaptiveTriggers, 'r2EffectsPercent', v)"
+            />
+            <label class="feature-title compact-title"><input type="checkbox" v-model="values.adaptiveTriggers.r2LimiterEnabled" @change="scheduleSave" /><span>Rev limiter pulses</span></label>
+            <label class="feature-title compact-title"><input type="checkbox" v-model="values.adaptiveTriggers.r2TcsEnabled" @change="scheduleSave" /><span>Traction control pulses</span></label>
+            <label class="feature-title compact-title"><input type="checkbox" v-model="values.adaptiveTriggers.r2WheelspinPulseEnabled" @change="scheduleSave" /><span>Wheelspin pulses (with or without ESC/TCS)</span></label>
+            <SettingSlider
+              label="Wheelspin pulse strength"
+              :model-value="values.adaptiveTriggers.r2WheelspinPulsePercent"
+              compact
+              @update:model-value="v => updatePercent(values.adaptiveTriggers, 'r2WheelspinPulsePercent', v)"
             />
           </div>
         </section>
@@ -185,6 +214,7 @@ import { ACCENTS, BngButton } from "@/common/components/base"
 import { runRaw } from "@/bridge/libs/Lua.js"
 import { getModSetting, setModSetting, flushModSettings } from "./settingsStore.js"
 import SettingSlider from "./SettingSlider.vue"
+import SettingRangeSlider from "./SettingRangeSlider.vue"
 import DualSenseExtendedInputsSettings from "./components/DualSenseExtendedInputsSettings.vue"
 import ControllerSpeakerSettings from "./components/ControllerSpeakerSettings.vue"
 import { resetExtendedInputsDefaults, resetSpeakerDefaults } from "./suiteDefaults.js"
@@ -197,6 +227,7 @@ import {
   decodeStored,
   clampPercent,
   clampFinePercent,
+  clampPositionPercent,
   normalizeSettings,
 } from "./settingsModel.js"
 
@@ -222,6 +253,18 @@ function snapshot() {
 
 function updatePercent(target, key, value) {
   target[key] = clampPercent(value)
+  scheduleSave()
+}
+
+function updatePosition(key, value) {
+  const t = values.adaptiveTriggers
+  if (key.endsWith('EndPositionPercent')) {
+    const start = key.startsWith('l2') ? t.l2StartPositionPercent : t.r2StartPositionPercent
+    t[key] = Math.max(start + 1, Math.min(100, Math.round(Number(value) || 100)))
+  } else {
+    const end = key.startsWith('l2') ? t.l2EndPositionPercent : t.r2EndPositionPercent
+    t[key] = Math.min(clampPositionPercent(value), end - 1)
+  }
   scheduleSave()
 }
 
@@ -546,6 +589,10 @@ onBeforeUnmount(() => {
   background: var(--dph-card-strong);
   border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.trigger-resistance-settings {
+  margin-top: 1.35rem;
 }
 
 .feature-card + .feature-card,

@@ -41,7 +41,7 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
 - **Additional DualSense bindable buttons:**
   - Create / Share button
   - PlayStation button *(Steam Input disabled)*
-  - Mute button
+  - Mute button (Button / Toggle modes)
 
 
 # Installation
@@ -54,10 +54,16 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
 3. Extract the complete **Bridge ZIP** anywhere on Windows.
    - Do not move individual files out of the extracted Bridge folder.
 4. Connect your DualSense through **USB or Bluetooth**.
-5. Start BeamNG and **disable BeamNG's native controller vibration** while using this mod.
+5. Start BeamNG and **disable BeamNG's native controller vibration** in the game settings.
 6. Run `START_BRIDGE.exe`.
    - Or use `START_BRIDGE_AND_BEAMNG.exe` to automatically start both the Bridge and BeamNG.
    - You can create a shortcut to either launcher on your desktop or taskbar if you wish.
+
+### Main settings
+
+- **Adaptive triggers:** adjust the **Start / end deadzone** for L2 and R2 (default: 0–100%), plus the **Resistance strength at start/end of travel**.
+- **R2 dynamic effects:** Jolt strength now scales the rev-limiter/TCS feedback relative to the calibrated 25% reference; Wheelspin pulse strength has its own independent control. Driven-wheel slip can pulse during TCS intervention or a stationary burnout (alternating with TCS feedback, not stacking HID effects). Normal throttle resistance, ABS, shift and airborne release are unchanged.
+- **Touchpad mouse:** saving a new touchpad binding automatically turns **Mouse Off**. You can turn the mouse back on at any time through the UI or BeamNG shortcut without deleting saved bindings. Other controller bindings do not change this setting.
 
 ### Notes
 
@@ -66,7 +72,7 @@ Designed to be simple and automatic, the mod **does NOT require DSX or DS4Window
 
 #### Compatibility
 
-The mod is compatible with **Local Split Screen**.
+The mod is compatible with [**Local Split Screen**](https://www.beamng.com/resources/local-split-screen.39292/).
 
 
 # Controls, bindings and settings
@@ -91,20 +97,23 @@ Touchpad, motion and accelerometer inputs all use the same binding workflow:
 Once configured, BeamNG can save it like any other controller binding.
 
 
+### Mic Mute
+
+In **Extended Inputs**, choose **Button** for a normal press-and-release input or **Toggle** to switch the virtual input on and off with each press. Toggle also provides a 0–100% virtual axis for BeamNG's **Set ... Mode** controls.
+
+**Invert Mute LED state** (Toggle mode only) reverses which virtual input state corresponds to the orange light. The light is an indicator; this feature does **not** mute the real microphone.
+
+For recognized vehicle functions with a readable state (including certain differential locks, 4WD and transfer range), Toggle follows the actual in-game state during driving and after changing vehicles, loading a level, resetting or repairing a vehicle. The mod confirms new readings before changing the LED, ignores outdated responses and does not operate vehicle controls just to synchronize the indicator. Other or ambiguous bindings keep the simple manual Toggle behavior; their indicator may need manual adjustment.
+
 # Touchpad
 
 ## Mouse mode
 
-When no touchpad input is bound in BeamNG, the touchpad automatically works as a **Windows mouse**, including outside the game.
+With BeamNG running, the touchpad works as a **Windows mouse** automatically when it has no active BeamNG touchpad bindings. **Touchpad taps, swipes and analog inputs are available for the very first binding**, even if no touchpad bindings have been saved yet. A newly saved touchpad binding switches **Mouse Off** automatically; BeamNG takes priority during binding capture. You can turn the mouse back on manually without deleting the binding, and turn it off again to use the bound actions. Bindings for other controller buttons do not change the mouse mode.
 
-As soon as at least one touchpad input is bound, automatic mouse mode is disabled and the touchpad is used for BeamNG bindings instead.
+Use **Mouse On/Off** under **Mod settings > Inputs > Touchpad**, or bind **“Toggle DualSense Touchpad Mouse Mode”** in BeamNG. **On** forces Windows mouse control, temporarily suspending saved touchpad actions. **Off** disables Windows mouse movement/clicks and restores those actions. The bindings are never deleted, and the binding editor always takes priority. Vehicle-specific actions are available only when their vehicle or part is loaded.
 
-To manually switch between mouse mode and your saved touchpad bindings:
-
-- Bind the BeamNG action **“Toggle DualSense Touchpad Mouse Mode”** in the BeamNG **Controls** menu.
-  - It can be assigned to a keyboard key or controller button.
-- The **Mouse** button in the mod settings can also force mouse mode manually.
-- Existing bindings are preserved when switching between both modes.
+If BeamNG closes or the Bridge stops receiving the game's mouse ownership updates, the Windows mouse is disabled instead of being unexpectedly re-enabled. Restart BeamNG after installing both the updated mod and Bridge; use the same V1.50 packages together.
 
 ## Touchpad input types
 
@@ -129,6 +138,7 @@ Motion inputs can generally be exposed as:
 - **Rotation angle**:
   - Measures how far the controller has rotated from its centered position. Suited to steering-like controls.
   - **Auto calibration** can detect the physical axis you naturally rotate around.
+  - **Steering end stops** hold the bound axis at the configured per-side angle (90°, 135°, 180°, etc.), even if you rotate past ±180°. Turning back toward the center releases the stop smoothly; recentering resets the rotation history.
 - **Rotation speed**:
   - Measures how quickly the controller is rotating.
   - Returns toward zero when the controller stops moving.
@@ -246,9 +256,48 @@ The BeamNG forum thread can also be used for discussion, troubleshooting and sug
 
 [**Enhanced PS5 DualSense Haptics — BeamNG forum thread**](https://www.beamng.com/threads/enhanced-ps5-dualsense-haptics-feedback-support-suggestions.111320/)
 
+[**Community discussion on r/BeamNG**](https://www.reddit.com/r/BeamNG/s/dfnxC5vECj)
+
 
 # License
 
 This project is released under the **MIT License**.
 
 See [`LICENSE`](LICENSE) for details.
+
+
+## Release integrity and source builds
+
+The GitHub source repository does not track generated executables or ZIPs. For a
+release, use Python 3.11+ and Go 1.27.4 to build from the same source checkout:
+
+```sh
+python Source/scripts/package_release.py --repo-root .
+```
+
+The script validates version/compatibility metadata, rebuilds the Windows USB
+and Bluetooth Bridge executables, launcher and updater, and packages the mod
+and Bridge in `Release/`, together with SHA-256 manifests and a build provenance note. The build process
+does not upload or publish anything and does not touch the BeamNG installation.
+For an official release, build and verify both ZIPs from the same source with a
+**maintained Go toolchain** (Go 1.27.4 in the optional CI). GitHub Actions is
+not required: you may upload the verified ZIPs manually to GitHub Releases.
+Local archives built using another Go toolchain may differ.
+Publish the two matching `V1.50` ZIPs as assets of a complete stable GitHub
+release tagged `V1.50`. A draft/prerelease or missing asset will be ignored by
+the V1.43 updater. Updating the Bridge does not automatically replace the
+BeamNG mod ZIP: follow the manual installation guide produced by the updater.
+
+Back up any **custom edits** made to `Config/feel_profile_v1.json` before
+updating from older Bridge versions: this file ships with the Bridge runtime
+and can be replaced by the legacy updater. BeamNG's saved controls and
+settings are not part of that runtime file.
+
+
+## Mod Manager activation/deactivation test
+
+This release explicitly unloads the mod's persistent Lua extensions only when
+BeamNG disables **this** mod. Switching maps, resetting vehicles or switching
+vehicles must not unload them. Vue route and pause-button lifecycle operations
+are serialized. See [`Release/MOD_ACTIVATION_TEST_V1.50.md`](Release/MOD_ACTIVATION_TEST_V1.50.md)
+for the manual in-game regression test.

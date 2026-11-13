@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/Ragnarok179/enhanced-ps5-dualsense-haptics-bridge/internal/compatibility"
@@ -71,8 +72,14 @@ type rawTelemetry struct {
 }
 
 type telemetryUserSettings struct {
-	Schema            int `json:"schema"`
-	TriggerForceScale int `json:"triggerForceScale"`
+	L2StartPosition          float64 `json:"l2StartPosition"`
+	R2StartPosition          float64 `json:"r2StartPosition"`
+	R2LimiterEnabled         bool    `json:"r2LimiterEnabled"`
+	R2TcsEnabled             bool    `json:"r2TcsEnabled"`
+	R2WheelspinPulseEnabled  bool    `json:"r2WheelspinPulseEnabled"`
+	R2WheelspinPulseStrength int     `json:"r2WheelspinPulseStrength"`
+	Schema                   int     `json:"schema"`
+	TriggerForceScale        int     `json:"triggerForceScale"`
 
 	MasterEnabled   bool `json:"masterEnabled"`
 	MasterStrength  int  `json:"masterStrength"`
@@ -111,12 +118,13 @@ type telemetryUserSettings struct {
 }
 
 type triggerEffectWire struct {
-	Kind          string  `json:"kind"`
-	StartPosition float64 `json:"startPosition"`
-	StartForce    float64 `json:"startForce"`
-	EndForce      float64 `json:"endForce"`
-	Amplitude     float64 `json:"amplitude"`
-	FrequencyHz   float64 `json:"frequencyHz"`
+	Kind          string   `json:"kind"`
+	StartPosition float64  `json:"startPosition"`
+	EndPosition   *float64 `json:"endPosition,omitempty"` // nil = legacy full-travel resistance
+	StartForce    float64  `json:"startForce"`
+	EndForce      float64  `json:"endForce"`
+	Amplitude     float64  `json:"amplitude"`
+	FrequencyHz   float64  `json:"frequencyHz"`
 }
 
 type telemetry struct {
@@ -135,6 +143,7 @@ type telemetry struct {
 
 	L2Mode          int `json:"l2Mode"`
 	L2StartZone     int `json:"l2StartZone"`
+	L2EndZone       int `json:"l2EndZone"` // exclusive; 0 means legacy default 10
 	L2StartStrength int `json:"l2StartStrength"`
 	L2EndStrength   int `json:"l2EndStrength"`
 	L2Amplitude     int `json:"l2Amplitude"`
@@ -142,6 +151,7 @@ type telemetry struct {
 
 	R2Mode                 int           `json:"r2Mode"`
 	R2StartZone            int           `json:"r2StartZone"`
+	R2EndZone              int           `json:"r2EndZone"`
 	R2StartStrength        int           `json:"r2StartStrength"`
 	R2EndStrength          int           `json:"r2EndStrength"`
 	R2Amplitude            int           `json:"r2Amplitude"`
@@ -252,12 +262,27 @@ func effectToLegacyFields(effect *triggerEffectWire) (mode, zone, start, end, am
 	}
 }
 
+// DualSense feedback has ten physical resistance zones. Keep the end zone
+// exclusive, and preserve the legacy full-travel effect when the field is absent.
+func effectEndZone(effect *triggerEffectWire, startZone int) int {
+	if effect == nil || effect.EndPosition == nil {
+		return 10
+	}
+	p := *effect.EndPosition
+	if math.IsNaN(p) || math.IsInf(p, 0) {
+		return 10
+	}
+	return clampInt(int(math.Ceil(clampUnit(p)*10)), clampInt(startZone+1, 1, 10), 10)
+}
+
 func normalizeSemanticTriggerEffects(t *telemetry) {
 	if t == nil {
 		return
 	}
 	t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz = effectToLegacyFields(t.L2Effect)
 	t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz = effectToLegacyFields(t.R2Effect)
+	t.L2EndZone = effectEndZone(t.L2Effect, t.L2StartZone)
+	t.R2EndZone = effectEndZone(t.R2Effect, t.R2StartZone)
 }
 
 type telemetryHeader struct {

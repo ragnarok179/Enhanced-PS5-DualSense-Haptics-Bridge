@@ -606,12 +606,14 @@ func applyABSHybridPulse(t telemetry, now time.Time, state *absPulseState) (tele
 		if state.lastLock {
 			t.L2Mode = 1
 			t.L2StartZone = 0
+			t.L2EndZone = 10
 			t.L2StartStrength, t.L2EndStrength = base, base
 			t.L2Amplitude, t.L2Hz = 0, 0
 			return t, true, "lock_base", base, kick, kick, cadenceHz
 		}
 		t.L2Mode = 0
 		t.L2StartZone = 0
+		t.L2EndZone = 10
 		t.L2StartStrength, t.L2EndStrength = 0, 0
 		t.L2Amplitude, t.L2Hz = 0, 0
 		return t, true, "release_off", base, kick, 0, cadenceHz
@@ -619,12 +621,14 @@ func applyABSHybridPulse(t telemetry, now time.Time, state *absPulseState) (tele
 	if phaseElapsed < releaseDuration+kickDuration {
 		t.L2Mode = 1
 		t.L2StartZone = 0
+		t.L2EndZone = 10
 		t.L2StartStrength, t.L2EndStrength = kick, kick
 		t.L2Amplitude, t.L2Hz = 0, 0
 		return t, true, "kick", base, kick, kick, cadenceHz
 	}
 	t.L2Mode = 1
 	t.L2StartZone = 0
+	t.L2EndZone = 10
 	t.L2StartStrength, t.L2EndStrength = base, base
 	t.L2Amplitude, t.L2Hz = 0, 0
 	return t, true, "base", base, kick, base, cadenceHz
@@ -637,11 +641,46 @@ type adaptiveThrottleTriggerState struct {
 	lastLog         time.Time
 }
 
-// applyAdaptiveThrottleTrigger uses the legacy low-force byte only during genuine
-// driven-wheel slip. The requested 1% corresponds to 3/255 at slip onset.
-// Position and force are both smoothed; the effect never alternates Off/On.
+// configuredWheelspinPulse owns the wheelspin amplitude mapping. It is
+// independent of Jolt strength, and takes priority over TCS only during a
+// short 50-ms pulse window every 200 ms (the original calibrated cadence).
+func configuredWheelspinPulse(t telemetry, now time.Time, schema int, enabled bool, force48 int, severity float64) (telemetry, bool) {
+	if schema < 13 || !enabled || force48 <= 0 || (now.UnixNano()/int64(50*time.Millisecond))%4 != 0 {
+		return t, false
+	}
+	gain := float64(clampInt(force48, 0, 48)) / 48
+	amplitude := clampInt(int(math.Round((0.30+0.70*clamp01(severity))*gain*255)), 1, 255)
+	t.R2Mode = 2
+	t.R2StartStrength, t.R2EndStrength = 0, 0
+	t.R2Amplitude = amplitude
+	t.R2Hz = clampInt(int(math.Round(18+6*clamp01(severity))), 1, 255)
+	return t, true
+}
+
+// applyAdaptiveThrottleTrigger preserves the very-low-force wheelspin release.
+// When enabled by schema 13, brief physical wheelspin pulses alternate with
+// that release; the legacy behavior remains when the pulse option is off.
 func applyAdaptiveThrottleTrigger(t telemetry, now time.Time, state *adaptiveThrottleTriggerState, shiftTorqueCut bool) (telemetry, bool, float64, float64, float64) {
 	if state == nil {
+		return t, false, 0, 0, 0
+	}
+	// Mod settings are sent on sparse heartbeat packets. For all the ordinary
+	// gameplay packets, use the last validated schema-13 settings from memory.
+	feedbackSettings := currentUserSettings()
+	feedbackSchema := feedbackSettings.FeedbackSchema
+	r2DynamicEnabled := feedbackSettings.R2DynamicEnabled
+	wheelspinPulseEnabled := feedbackSettings.R2WheelspinPulseEnabled
+	wheelspinPulseStrength := feedbackSettings.R2WheelspinPulseStrength
+	if t.UserSettings != nil && t.UserSettings.Schema >= 13 {
+		feedbackSchema = t.UserSettings.Schema
+		r2DynamicEnabled = t.UserSettings.R2EffectsEnabled
+		wheelspinPulseEnabled = t.UserSettings.R2WheelspinPulseEnabled
+		wheelspinPulseStrength = t.UserSettings.R2WheelspinPulseStrength
+	}
+	// Disabling R2 dynamic effects must not be overridden by wheelspin/shift.
+	if feedbackSchema >= 13 && !r2DynamicEnabled {
+		state.currentPosition, state.currentStrength = 0, 0
+		state.lastTime = now
 		return t, false, 0, 0, 0
 	}
 	if t.Raw == nil || !t.Active || !t.Raw.EngineRunning {
@@ -686,9 +725,20 @@ func applyAdaptiveThrottleTrigger(t telemetry, now time.Time, state *adaptiveThr
 		return t, true, 0, float64(cfg.ShiftPosition255), float64(cfg.ShiftPosition255)
 	}
 
-	// Genuine TCS and rev-limiter interventions keep their dedicated vibration.
-	if t.Raw.TCS || t.Raw.TCSRaw || t.Raw.RevLimiter || t.R2Mode == 2 {
+	// Rev limiter remains authoritative; during wheelspin + TCS we use
+	// occasional slip pulses but preserve the TCS signal between them.
+	if t.Raw.RevLimiter {
 		state.lastTime = now
+		return t, false, 0, state.currentPosition, state.currentPosition
+	}
+	if t.Raw.TCS || t.Raw.TCSRaw || t.R2Mode == 2 {
+		state.lastTime = now
+		if t.Raw.Wheelspin {
+			severity := clamp01((t.Raw.DrivenSlip - 3.2) / (20.0 - 3.2))
+			if pulse, ok := configuredWheelspinPulse(t, now, feedbackSchema, wheelspinPulseEnabled, wheelspinPulseStrength, severity); ok {
+				return pulse, true, severity, state.currentPosition, state.currentPosition
+			}
+		}
 		return t, false, 0, state.currentPosition, state.currentPosition
 	}
 
@@ -720,6 +770,13 @@ func applyAdaptiveThrottleTrigger(t telemetry, now time.Time, state *adaptiveThr
 		forceAlpha := 1 - math.Exp(-dt/0.035)
 		state.currentPosition += (targetPosition - state.currentPosition) * posAlpha
 		state.currentStrength += (targetStrength - state.currentStrength) * forceAlpha
+		// Split the driven-wheel-slip interval into brief pulses and longer
+		// low-force release intervals. We cannot superimpose two HID trigger
+		// effects, so time multiplexing retains the tactile loss of grip.
+		if pulse, ok := configuredWheelspinPulse(t, now, feedbackSchema, wheelspinPulseEnabled, wheelspinPulseStrength, severity); ok {
+			pulse.R2StartZone = clampInt(int(math.Round(state.currentPosition)), 0, 180)
+			return pulse, true, severity, targetPosition, state.currentPosition
+		}
 		t.R2Mode = 3
 		t.R2StartZone = clampInt(int(math.Round(state.currentPosition)), 0, 180)
 		t.R2StartStrength = clampInt(int(math.Round(state.currentStrength)), 1, 3)

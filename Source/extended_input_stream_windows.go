@@ -73,6 +73,7 @@ func startExtendedInputStream(d *device, done <-chan struct{}) {
 		var orientation dualSenseOrientation
 		var lastSent extendedInputWireState
 		haveLast := false
+		var previousMutePressed bool
 		var touchSeq, motionSeq byte
 		lastTouchSend := time.Time{}
 		var lastMotionSensorTS uint32
@@ -109,6 +110,10 @@ func startExtendedInputStream(d *device, done <-chan struct{}) {
 				continue
 			}
 			now := time.Now()
+			if decoded.Mute && !previousMutePressed {
+				notePhysicalMicMutePress(now)
+			}
+			previousMutePressed = decoded.Mute
 			noteControllerReportSeen(now)
 			if reason := idleInputTracker.activity(inputBuf[:n]); reason != bluetoothIdleActivityNone {
 				noteControllerInputActivityReason(now, reason)

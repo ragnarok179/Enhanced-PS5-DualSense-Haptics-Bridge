@@ -2,7 +2,7 @@ import { setModSetting } from "./settingsStore.js"
 import {
   CUSTOM_SETTING_KEYS,
   DEFAULT_CUSTOM_MAPPING,
-  MOUSE_MODE_SETTINGS_KEY,
+  MOUSE_MODE_SETTINGS_KEY, MIC_MUTE_MODE_SETTINGS_KEY, MIC_MUTE_INVERT_SETTINGS_KEY,
   TWO_FINGER_MOUSE_TOGGLE_SETTINGS_KEY,
   BLUETOOTH_IDLE_SETTINGS_KEY,
   BLUETOOTH_IDLE_EXPLICIT_OFF_KEY,
@@ -27,6 +27,8 @@ function escapeLuaString(value) { return String(value).replace(/\\/g, "\\\\").re
 
 export function createExtendedInputsDefaultPatch() {
   const patch = {
+    [MIC_MUTE_MODE_SETTINGS_KEY]: "button",
+    [MIC_MUTE_INVERT_SETTINGS_KEY]: false,
     [MOUSE_MODE_SETTINGS_KEY]: false,
     [TWO_FINGER_MOUSE_TOGGLE_SETTINGS_KEY]: false,
     [BLUETOOTH_IDLE_SETTINGS_KEY]: DEFAULT_BLUETOOTH_IDLE_MINUTES,
@@ -41,6 +43,8 @@ export async function resetExtendedInputsDefaults(runRaw) {
   for (const [channel, mapping] of Object.entries(DEFAULT_CUSTOM_MAPPING)) {
     await runRaw(`extensions.dualsenseExtendedInputs.setTouchpadCustomMapping('${escapeLuaString(channel)}','${escapeLuaString(mapping)}')`)
   }
+  await runRaw("extensions.dualsenseExtendedInputs.setMicMuteInputMode('button')")
+  await runRaw("extensions.dualsenseExtendedInputs.setMicMuteInverted(false)")
   await runRaw(`extensions.dualsenseExtendedInputs.setTouchpadMouseMode(${boolLua(false)})`)
   try { await runRaw("extensions.dualsenseExtendedInputs.setTwoFingerMouseToggleEnabled(false)") } catch {}
   await runRaw(`extensions.dualsenseExtendedInputs.setBluetoothIdleTimeoutMinutes(${DEFAULT_BLUETOOTH_IDLE_MINUTES})`)

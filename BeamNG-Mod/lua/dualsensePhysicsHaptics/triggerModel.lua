@@ -33,10 +33,11 @@ local function effectTarget(out)
   return type(out) == "table" and out or {}
 end
 
-local function writeEffect(out, kind, startPosition, startForce, endForce, amplitude, frequencyHz)
+local function writeEffect(out, kind, startPosition, startForce, endForce, amplitude, frequencyHz, endPosition)
   out = effectTarget(out)
   out.kind = kind
   out.startPosition = startPosition
+  out.endPosition = endPosition or 1
   out.startForce = startForce
   out.endForce = endForce
   out.amplitude = amplitude
@@ -48,8 +49,8 @@ function M.off(out)
   return writeEffect(out, "off", 0, 0, 0, 0, 0)
 end
 
-function M.resistance(startPosition, startForce, endForce, out)
-  return writeEffect(out, "resistance", unit(startPosition), forceUnit(startForce), forceUnit(endForce), 0, 0)
+function M.resistance(startPosition, startForce, endForce, out, endPosition)
+  return writeEffect(out, "resistance", unit(startPosition), forceUnit(startForce), forceUnit(endForce), 0, 0, unit(endPosition or 1))
 end
 
 function M.vibration(startPosition, amplitude, frequencyHz, out)
@@ -78,6 +79,7 @@ function M.signatureEquals(effect, state)
   effect = effect or {}
   return state.kind == (effect.kind or "off") and
     state.position == positionByte(effect.startPosition) and
+    state.endPosition == positionByte(effect.endPosition or 1) and
     state.startForce == M.forceLevel(effect.startForce) and
     state.endForce == M.forceLevel(effect.endForce) and
     state.amplitude == M.forceLevel(effect.amplitude) and
@@ -89,6 +91,7 @@ function M.captureSignature(effect, state)
   effect = effect or {}
   state.kind = effect.kind or "off"
   state.position = positionByte(effect.startPosition)
+  state.endPosition = positionByte(effect.endPosition or 1)
   state.startForce = M.forceLevel(effect.startForce)
   state.endForce = M.forceLevel(effect.endForce)
   state.amplitude = M.forceLevel(effect.amplitude)

@@ -42,9 +42,9 @@ BeamNG owns DualSense RGB/RPM lighting on both transports.
 ## Update routing
 
 - Supported legacy migration starts at **V1.3**.
-- Legacy **V1.3** and **V1.4-era** updaters can select **Bridge V1.42 directly** through `BRIDGE_COMPATIBILITY.json`.
-- Once Bridge V1.42 is installed, `UPDATE_DUALSENSE.exe` downloads the matching BeamNG mod ZIP and guides the manual BeamNG installation.
-- `V1.41 -> V1.42` also uses `UPDATE_DUALSENSE.exe`.
+- Legacy **V1.3** and **V1.4-era** updaters can select **Bridge V1.50 directly** through `BRIDGE_COMPATIBILITY.json`.
+- Once Bridge V1.50 is installed, `UPDATE_DUALSENSE.exe` downloads the matching BeamNG mod ZIP and guides the manual BeamNG installation.
+- `V1.43 -> V1.50` also uses `UPDATE_DUALSENSE.exe`.
 
 ## Source responsibilities
 

@@ -11,9 +11,18 @@ import (
 
 const userSettingsSchema = 3
 
+// 25% in the game UI was the calibrated V1.50 jolt baseline. Its
+// on-wire 0..48 value is 12, so a normal slider value must give gain 1.
+const r2JoltReferenceForce48 = 12
+
 type userSettings struct {
-	Schema  int `json:"schema"`
-	Haptics struct {
+	Schema                   int     `json:"schema"`
+	FeedbackSchema           int     `json:"feedback_schema,omitempty"`
+	R2DynamicEnabled         bool    `json:"r2_dynamic_enabled,omitempty"`
+	R2JoltGain               float64 `json:"-"`
+	R2WheelspinPulseEnabled  bool    `json:"r2_wheelspin_pulse_enabled,omitempty"`
+	R2WheelspinPulseStrength int     `json:"r2_wheelspin_pulse_strength,omitempty"`
+	Haptics                  struct {
 		MasterPercent  int `json:"master_percent"`
 		SurfacePercent int `json:"surface_percent"`
 		ImpactPercent  int `json:"impact_percent"`
@@ -47,6 +56,7 @@ func defaultUserSettings() userSettings {
 	s.AdaptiveTriggers.ABSPercent = 100
 	s.AdaptiveTriggers.R2ThrottlePercent = 100
 	s.AdaptiveTriggers.R2EffectsPercent = 100
+	s.R2JoltGain = 1
 	s.Lighting.Enabled = true
 	s.Lighting.BrightnessPercent = 100
 	return s
@@ -66,6 +76,11 @@ func normalizeUserSettings(s userSettings) userSettings {
 	if s.Schema != userSettingsSchema {
 		return defaultUserSettings()
 	}
+	// R2JoltGain is derived from live BeamNG settings and not serialized.
+	if s.R2JoltGain == 0 {
+		s.R2JoltGain = 1
+	}
+	s.R2WheelspinPulseStrength = clampInt(s.R2WheelspinPulseStrength, 0, 48)
 	s.Haptics.MasterPercent = clampPercent(s.Haptics.MasterPercent)
 	s.Haptics.SurfacePercent = clampPercent(s.Haptics.SurfacePercent)
 	s.Haptics.ImpactPercent = clampPercent(s.Haptics.ImpactPercent)
@@ -271,7 +286,16 @@ func applyUserHapticMaster(samples []int8) {
 	}
 }
 
-func applyUserTriggerPreferences(t telemetry, absActive bool) telemetry {
+// scaleR2Jolt scales one physical effect, not the already-scaled normal
+// resistance. The firmware's output lattice imposes the only saturation.
+func scaleR2Jolt(strength int, gain float64, limit int) int {
+	if strength <= 0 || gain <= 0 {
+		return 0
+	}
+	return clampInt(int(math.Round(float64(strength)*gain)), 0, limit)
+}
+
+func applyUserTriggerPreferences(t telemetry, absActive bool, adaptiveR2Override bool) telemetry {
 	settings := currentUserSettings()
 
 	// ABS builds its own pulse pattern and already applies both the
@@ -293,14 +317,18 @@ func applyUserTriggerPreferences(t telemetry, absActive bool) telemetry {
 		if t.R2StartStrength == 0 || t.R2EndStrength == 0 {
 			t.R2Mode = 0
 		}
-	} else if t.Raw == nil || !t.Raw.Airborne {
+	} else if !adaptiveR2Override && (t.Raw == nil || !t.Raw.Airborne) {
+		// The Jolt slider controls limiter/TCS and ordinary R2 dynamics.
+		// Wheelspin pulses have their own strength slider; shift/airborne
+		// overrides are calibrated independently and must not be scaled twice.
+		gain := settings.R2JoltGain
 		if t.R2Mode == 2 {
-			t.R2Amplitude = scaleNormalized255(t.R2Amplitude, settings.AdaptiveTriggers.R2EffectsPercent)
+			t.R2Amplitude = scaleR2Jolt(t.R2Amplitude, gain, 255)
 			if t.R2Amplitude == 0 {
 				t.R2Mode = 0
 			}
 		} else if t.R2Mode == 3 {
-			t.R2StartStrength = scaleFineStrength(t.R2StartStrength, settings.AdaptiveTriggers.R2EffectsPercent)
+			t.R2StartStrength = scaleR2Jolt(t.R2StartStrength, gain, 48)
 			t.R2EndStrength = t.R2StartStrength
 			if t.R2StartStrength == 0 {
 				t.R2Mode = 0
@@ -328,6 +356,19 @@ func force48ToPercent(v int) int {
 func applyBeamNGUserSettings(remote telemetryUserSettings) {
 	ensureUserSettings()
 	next := currentUserSettings()
+	// User-settings packets are sparse heartbeats, unlike gameplay telemetry.
+	// Cache schema-13 feedback options so every 15-Hz wheelspin frame can use
+	// them, not only the frame that happens to carry userSettings.
+	next.FeedbackSchema = remote.Schema
+	next.R2DynamicEnabled = remote.Schema >= 13 && remote.R2EffectsEnabled
+	// Preserve the reference intensity at UI 25%; unlike the previous fixed
+	// 100% value, every slider position now affects the emitted trigger effect.
+	next.R2JoltGain = 1
+	if remote.Schema >= 13 {
+		next.R2JoltGain = float64(clampInt(remote.R2EffectsStrength, 0, 48)) / r2JoltReferenceForce48
+	}
+	next.R2WheelspinPulseEnabled = remote.Schema >= 13 && remote.R2WheelspinPulseEnabled
+	next.R2WheelspinPulseStrength = clampInt(remote.R2WheelspinPulseStrength, 0, 48)
 
 	if remote.Schema >= 11 {
 		next.Lighting.Enabled = remote.LightingEnabled
@@ -368,7 +409,13 @@ func applyBeamNGUserSettings(remote telemetryUserSettings) {
 			next.AdaptiveTriggers.R2ThrottlePercent = 0
 		}
 		if remote.R2EffectsEnabled {
-			next.AdaptiveTriggers.R2EffectsPercent = 100
+			// Schema 12 did not carry a functional Jolt gain; preserve its
+			// original unity feedback instead of misreading an absent field.
+			if remote.Schema >= 13 {
+				next.AdaptiveTriggers.R2EffectsPercent = int(math.Round(next.R2JoltGain * 25))
+			} else {
+				next.AdaptiveTriggers.R2EffectsPercent = 100
+			}
 		} else {
 			next.AdaptiveTriggers.R2EffectsPercent = 0
 		}

@@ -2,6 +2,7 @@ local M = {}
 
 local VINPUT = require("dualsenseSuite/virtualInputDevice")
 local SETTINGS_STORE = require("dualsenseSuite/settingsStore")
+local CONTINUOUS_ROTATION = require("dualsenseSuite/continuousRotation")
 local MOTION_BINDING_MIGRATION_KEY = "dphMotionBindingMigrationStoreV1"
 local initialized = false
 
@@ -603,6 +604,7 @@ local function captureNeutral(s)
   local gx,gy,gz=sensor.gravityX,sensor.gravityY,sensor.gravityZ
   s.neutralTiltLR=math.deg(math.atan2(gx,math.sqrt(gy*gy+gz*gz)))
   s.neutralTiltFB=math.deg(math.atan2(gz,math.sqrt(gx*gx+gy*gy)))
+  CONTINUOUS_ROTATION.reset(s)
   s.filtered=0; s.output=0
 end
 
@@ -669,18 +671,6 @@ local function normalizedMotionAxis(s)
   return ax/n,ay/n,az/n
 end
 
-local function twistAngleFromQuat(w,x,y,z,ax,ay,az)
-  local projection=x*ax+y*ay+z*az
-  local n=math.sqrt(w*w+projection*projection)
-  if n<1e-8 then return 0 end
-  local tw=w/n
-  local tp=projection/n
-  local angle=2*math.atan2(tp,tw)
-  while angle>math.pi do angle=angle-2*math.pi end
-  while angle<-math.pi do angle=angle+2*math.pi end
-  return angle
-end
-
 local function processRotation(s)
   local ax,ay,az=normalizedMotionAxis(s)
   if not ax then return 0 end
@@ -688,8 +678,8 @@ local function processRotation(s)
   -- Swing/twist decomposition isolates rotation around the chosen physical
   -- axis. This restores the steering-style calibration behavior and makes
   -- Range a real per-side angle instead of a projected 3D rotation vector.
-  local value=twistAngleFromQuat(w,x,y,z,ax,ay,az)
-  return math.deg(value)/math.max(0.1,s.range)
+  local wrappedAngle=CONTINUOUS_ROTATION.twistAngle(w,x,y,z,ax,ay,az)
+  return CONTINUOUS_ROTATION.advanceAndNormalize(s,wrappedAngle,s.range)
 end
 
 local function processGyro(s)
@@ -1339,7 +1329,7 @@ local function updateCalibrations()
         if ax then
           local maxTwist=0
           for _,q in ipairs(c.samples) do
-            local angle=math.abs(twistAngleFromQuat(q[1],q[2],q[3],q[4],ax,ay,az))
+            local angle=math.abs(CONTINUOUS_ROTATION.twistAngle(q[1],q[2],q[3],q[4],ax,ay,az))
             if angle>maxTwist then maxTwist=angle end
           end
           if maxTwist>=math.rad(8) then

@@ -49,22 +49,22 @@ func TestV143GuardAllowsV13ForOneTimeMigration(t *testing.T) {
 	}
 }
 
-func TestV143GuardAcceptsSynchronizedRelease(t *testing.T) {
+func TestV151GuardAcceptsSynchronizedRelease(t *testing.T) {
 	guard := protocolCompatibilityGuard{}
 	stopped := false
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.43","protocolMin":43,"protocolMax":43,"v":43}`)
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.50","protocolMin":43,"protocolMax":43,"v":43}`)
 	if consumed := guard.handlePacket(packet, false, func() { stopped = true }); consumed {
-		t.Fatal("synchronized V1.43 packet should continue through telemetry decoding")
+		t.Fatal("synchronized V1.50 packet should continue through telemetry decoding")
 	}
 	if stopped {
-		t.Fatal("synchronized V1.43 release must not stop")
+		t.Fatal("synchronized V1.50 release must not stop")
 	}
 }
 
-func TestV143GuardStopsNewerProjectRelease(t *testing.T) {
+func TestV151GuardStopsNewerProjectRelease(t *testing.T) {
 	guard := protocolCompatibilityGuard{}
 	stopped := false
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.44","protocolMin":43,"protocolMax":43,"v":43}`)
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.52","protocolMin":43,"protocolMax":43,"v":43}`)
 	if consumed := guard.handlePacket(packet, false, func() { stopped = true }); !consumed {
 		t.Fatal("newer mod release must be consumed by version guard")
 	}

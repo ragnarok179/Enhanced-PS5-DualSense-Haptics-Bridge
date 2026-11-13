@@ -44,9 +44,15 @@ func buildUSBSharedStateReport(d *device, t telemetry, _ [3]byte) []byte {
 		common[37] = 0x02
 	}
 	common[2], common[3] = 0, 0
-	fillTrigger(common[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz)
-	fillTrigger(common[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz)
+	fillTrigger(common[10:21], t.R2Mode, t.R2StartZone, t.R2StartStrength, t.R2EndStrength, t.R2Amplitude, t.R2Hz, t.R2EndZone)
+	fillTrigger(common[21:32], t.L2Mode, t.L2StartZone, t.L2StartStrength, t.L2EndStrength, t.L2Amplitude, t.L2Hz, t.L2EndZone)
 	common[44], common[45], common[46] = 0, 0, 0
+	return report
+}
+
+func buildUSBReportWithMuteLED(d *device, t telemetry, apply, on bool) []byte {
+	report := buildUSBSharedStateReport(d, t, [3]byte{})
+	applyMicMuteLEDReport(report[1:48], apply, on)
 	return report
 }
 
@@ -382,6 +388,8 @@ func main() {
 	var hidWrites uint64
 	var hidKeepAliveWrites uint64
 	lastStatus := time.Time{}
+	var lastMuteGen uint64
+	lastMuteSent := time.Time{}
 	for {
 		select {
 		case <-done:
@@ -408,15 +416,16 @@ func main() {
 
 		latest, lastPacket := mixer.snapshot()
 		frame := engine.step(latest, lastPacket, now, canonicalFramesPerStep)
+		micApply, micOn, micGen := micMuteLEDUpdateDue(lastMuteGen, lastMuteSent, now)
 		canonicalSamples := frame.Samples
 		// USB consumes the canonical 48-kHz reference directly. Bluetooth-only filtering happens inside the transport adapter.
 		usbSamples := pcmStream.processUSB(canonicalSamples)
 		audio.PushSharedSamples(usbSamples, canonicalHapticSampleRate)
 		trig := signatureForTriggers(frame.Control)
-		stateChanged := !stateSynced || trig != lastTrigger || rgbDistance(frame.RGB, lastRGB) >= 8
+		stateChanged := !stateSynced || trig != lastTrigger || rgbDistance(frame.RGB, lastRGB) >= 8 || micApply
 		keepAliveDue := stateSynced && now.Sub(lastHIDWrite) >= usbHIDKeepAliveInterval
 		if stateChanged || keepAliveDue {
-			if err := d.writeReport(buildUSBSharedStateReport(d, frame.Control, frame.RGB)); err != nil {
+			if err := d.writeReport(buildUSBReportWithMuteLED(d, frame.Control, micApply, micOn)); err != nil {
 				printRuntimeError("Controller disconnected.", err)
 				if launcherAuto {
 					launcherExitCode = launcherExitControllerDisconnected
@@ -427,6 +436,9 @@ func main() {
 				hidWrites++
 				if keepAliveDue && !stateChanged {
 					hidKeepAliveWrites++
+				}
+				if micApply {
+					lastMuteGen, lastMuteSent = micGen, now
 				}
 				lastHIDWrite = now
 			}

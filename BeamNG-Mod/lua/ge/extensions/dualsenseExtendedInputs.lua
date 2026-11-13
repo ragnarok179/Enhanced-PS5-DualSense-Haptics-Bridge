@@ -4,6 +4,7 @@ local TOUCH_BINDING_MIGRATION_KEY = "dphTouchBindingMigrationStoreV1"
 local initialized = false
 
 local VINPUT = require("dualsenseSuite/virtualInputDevice")
+local MIC_SYNC = require("dualsenseSuite/micMuteVehicleSync")
 
 local logTag = "DualSenseExtendedInputs"
 local listenHost = "127.0.0.1"
@@ -34,6 +35,7 @@ local bindingHeartbeat = 0.50
 local touchpadModeSettingKey = "dseTouchpadInputModeV2" -- compatibility preset migration only
 local touchpadPolicyState = {
   mouseMode = false,
+  mousePolicy = "auto", -- auto (unbound fallback), on, off (explicit disable)
   twoTapToggle = false,
   twoTapHigh = false,
   lastMouseMode = nil,
@@ -58,11 +60,14 @@ local udp = nil
 local statusUdp = nil
 local deviceInstance = nil
 local elapsed = 0
+local micVehicleProbePaused = false
 local lastPacketAt = -999
 local staleResetDone = true
 local bindingPollAt = -999
 local bindingStatusAt = -999
 local lastTouchBindingState = nil
+local savedTouchBindingSnapshot = nil
+local savedTouchBindingDevice = nil
 local lastBindingCaptureState = nil
 local bindingCaptureActive = false
 local bindingPopupOpen = false
@@ -91,6 +96,15 @@ local updateFrame = 0
 
 local buttonState = {}
 local axisState = {}
+-- In Button mode the original virtual button2 follows the physical Mic Mute
+-- button. Toggle mode holds button2 and exposes axis10 at 0/100% for BeamNG
+-- "Set ... Mode" bindings. The Bridge follows the same latch for the orange LED.
+local mic = {
+  settingKey = "dseMicMuteInputModeV1", invertKey = "dseMicMuteInvertedV1",
+  mode = "button", inverted = false, toggleOn = false, pressedHigh = false, axisLast = nil,
+}
+mic.active = function() return mic.toggleOn ~= mic.inverted end
+
 
 local touchState = {
   contacts = 0,
@@ -108,11 +122,11 @@ local touchState = {
 }
 
 -- The current mapping exposes direct per-channel mapping only. Mouse mode is a
--- non-destructive override: saved BeamNG bindings remain on disk while touch
--- outputs are silenced. One-finger tap stays a normal digital control; two-
--- finger tap is also normal unless explicitly reserved as the Mouse-mode toggle.
+-- non-destructive override: saved BeamNG bindings remain on disk and virtual
+-- touch events stay discoverable for the binding editor even during Windows
+-- mouse mode. Windows mouse injection is separately gated by the Bridge.
 -- Create/PS/Mute/Edge remain active and never claim touchpad ownership.
-local commonTouchControls = { button7=true }
+local commonTouchControls = { button3=true, button7=true }
 local validCustomChannels = { one_x=true, one_y=true, two_x=true, two_y=true }
 local validChannelMappings = { off=true, swipe=true, relative=true, absolute=true }
 
@@ -184,6 +198,8 @@ local function ensureStatusUDP()
 end
 
 local function deleteDevice()
+  mic.axisLast = nil
+  MIC_SYNC.reset()
   -- Release only this producer. The shared vinput remains registered while the
   -- motion producer is still active.
   deviceInstance = nil
@@ -195,6 +211,7 @@ local function configureDeviceShape()
   buttonCount = 17
   buttonState = {}
   axisState = {}
+  mic.axisLast = nil
   for i = 1, buttonCount do buttonState[i] = 0 end
   for i = 1, axisCount do axisState[i] = 0.5 end
 end
@@ -210,6 +227,7 @@ local function ensureDevice()
     deviceInstance = nil
     return false
   end
+  if deviceInstance ~= id then mic.axisLast = nil end
   deviceInstance = id
   return true
 end
@@ -540,11 +558,19 @@ local function persistSetting(key, value)
 end
 
 local function touchControlsEnabled()
-  if touchpadPolicyState.mouseMode then return false end
-  -- While unbound, the Bridge owns the pad as the automatic mouse fallback.
-  -- As soon as the binding editor starts listening, vinput temporarily owns it;
-  -- after a real touch binding is saved, vinput keeps ownership permanently.
-  return bindingCaptureActive or lastTouchBindingState == true
+  -- Keep the virtual touch controls observable even BEFORE the first binding.
+  -- The previous gate required either an existing binding or a recognised
+  -- capture route, creating a deadlock whenever BeamNG's Vue editor changed
+  -- routes without notifying this extension. Windows mouse ownership is
+  -- controlled separately by the Bridge's DSM2 policy; unbound virtual input
+  -- events are harmless and must remain available to binding capture.
+  -- Saved BeamNG bindings are suspended only when the user explicitly turns
+  -- the Windows mouse on. During binding capture, inputs must remain visible
+  -- so the editor can record even the first touchpad binding.
+  if touchpadPolicyState.mousePolicy == "on" and lastTouchBindingState == true and not bindingCaptureActive then
+    return false
+  end
+  return deviceInstance ~= nil
 end
 
 local function emitButton(index, value, force)
@@ -557,6 +583,14 @@ local function emitButton(index, value, force)
   if vi and deviceInstance ~= nil then
     vi.emit(deviceInstance, "button", index, value > 0 and "down" or "up", value)
   end
+end
+
+mic.emitAxis = function(value, force)
+  if deviceInstance == nil then return end
+  local normalized = value and 1 or 0
+  if not force and mic.axisLast == normalized then return end
+  mic.axisLast = normalized
+  VINPUT.emitAxis(deviceInstance, VINPUT.muteToggleAxisIndex, normalized)
 end
 
 local function emitAxis(index, value, force)
@@ -898,6 +932,12 @@ local function serviceRelativeAxes()
 end
 
 local function resetState()
+  -- A disconnected controller cannot leave gameplay controls latched.
+  mic.toggleOn = false
+  mic.pressedHigh = false
+  MIC_SYNC.reset()
+  mic.emitAxis(false, true)
+  if mic.sendLED then mic.sendLED() end
   for i = 0, axisCount - 1 do emitAxis(i, 0.5) end
   for i = 0, buttonCount - 1 do emitButton(i, false, true) end
   touchState.contacts = 0
@@ -944,8 +984,28 @@ local function applyPacket(data)
 
   emitButton(0, hasBit(flags, 1))
   emitButton(1, hasBit(flags, 2))
-  emitButton(2, hasBit(flags, 4))
-  emitButton(3, hasBit(flags, 8))
+  local mutePressed = hasBit(flags, 4)
+  if mic.mode == "toggle" then
+    if mutePressed and not mic.pressedHigh then
+      mic.toggleOn = not mic.toggleOn
+      MIC_SYNC.notePhysicalPress(elapsed, mic.active())
+      -- Only a genuine Mic Mute press may emit an axis command. Re-reading
+      -- another vehicle's state must never operate that vehicle.
+      mic.emitAxis(mic.active(), true)
+      if mic.sendLED then mic.sendLED() end
+    end
+    -- A known onDown vehicle toggle must receive a fresh physical press on
+    -- every click. Reasserting its latched button would toggle the vehicle back.
+    -- Unknown bindings keep the original held-button behaviour.
+    local buttonOutput = mic.active()
+    if MIC_SYNC.pulsedButton() then buttonOutput = mutePressed end
+    emitButton(2, buttonOutput)
+  else
+    emitButton(2, mutePressed)
+  end
+  mic.pressedHigh = mutePressed
+  -- Pad click belongs to the same owner as touch gestures.
+  emitButton(3, touchControlsEnabled() and hasBit(flags, 8))
   emitButton(4, hasBit(flags, 16))
   emitButton(5, hasBit(flags, 32))
   emitButton(6, hasBit(flags, 64))
@@ -1022,7 +1082,8 @@ local function applyPacket(data)
   touchState.tap2 = tap2
   touchState.transport = hasBit(tf, 8) and "Bluetooth" or "USB"
   touchState.edge = hasBit(tf, 4)
-  touchState.inputMode = touchpadPolicyState.mouseMode and "mouse" or "custom"
+  touchState.inputMode = (not bindingCaptureActive and
+    (touchpadPolicyState.mousePolicy == "on" or (touchpadPolicyState.mousePolicy == "auto" and lastTouchBindingState ~= true))) and "mouse" or "custom"
 
   lastPacketAt = elapsed
   staleResetDone = false
@@ -1044,7 +1105,8 @@ local function baseControl(control)
 end
 
 local function hasBeamNGTouchBindings()
-  if touchpadPolicyState.mouseMode then return false end
+  -- Never hide saved bindings merely because mouse mode was previously on:
+  -- doing so caused the Bridge to force mouse even after binding a touch key.
   if deviceInstance == nil or not core_input_bindings or type(core_input_bindings.bindings) ~= "table" then
     return false
   end
@@ -1059,6 +1121,53 @@ local function hasBeamNGTouchBindings()
         end
       end
     end
+  end
+  return false
+end
+
+-- Track saved virtual touchpad controls, not regular DualSense buttons or
+-- motion axes. A previously saved binding must not disable a later manual
+-- Mouse On; only a newly added/reassigned touchpad action does.
+local touchpadBindingControls = {button3=true, button7=true, button8=true,
+  xaxis=true, yaxis=true, zaxis=true, rxaxis=true}
+for i = 9, 16 do touchpadBindingControls["button" .. i] = true end
+
+local function snapshotTouchpadBindings()
+  if deviceInstance == nil or not core_input_bindings or type(core_input_bindings.bindings) ~= "table" then
+    return nil
+  end
+  local snapshot = {}
+  local devname = "vinput" .. tostring(deviceInstance)
+  for _, device in ipairs(core_input_bindings.bindings) do
+    if device.devname == devname and type(device.contents) == "table" and
+        type(device.contents.bindings) == "table" then
+      for _, binding in ipairs(device.contents.bindings) do
+        local control = baseControl(binding.control)
+        if touchpadBindingControls[control] then
+          local signature = control .. "\0" .. tostring(binding.action or "") .. "\0" .. tostring(binding.player or 0)
+          snapshot[signature] = (snapshot[signature] or 0) + 1
+        end
+      end
+    end
+  end
+  return snapshot
+end
+
+local function hasNewTouchpadBinding()
+  local current = snapshotTouchpadBindings()
+  if not current then return false end
+  if savedTouchBindingDevice ~= deviceInstance then
+    savedTouchBindingDevice, savedTouchBindingSnapshot = deviceInstance, current
+    return false
+  end
+  -- During editing BeamNG may temporarily remove and re-add bindings.
+  -- Compare the final saved state only once capture ends.
+  if bindingCaptureActive then return false end
+  local previous = savedTouchBindingSnapshot
+  savedTouchBindingSnapshot = current
+  if not previous then return false end
+  for signature, count in pairs(current) do
+    if count > (previous[signature] or 0) then return true end
   end
   return false
 end
@@ -1082,8 +1191,11 @@ end
 local function isTouchBindingsRoute(routeName)
   if type(routeName) ~= "string" then return false end
   local route = string.lower(routeName)
-  local root = "menu.options.controls.bindings"
-  return route == root or string.find(route, root .. ".", 1, true) == 1
+  -- Routes differ between BeamNG UI versions. Match the controls/bindings
+  -- section rather than a single legacy router prefix.
+  return string.find(route, "binding", 1, true) ~= nil and
+    (string.find(route, "controls", 1, true) ~= nil or
+     string.find(route, "options", 1, true) ~= nil)
 end
 
 local function isTouchBindingCaptureRoute(routeName)
@@ -1105,7 +1217,7 @@ end
 local function isEditBindingPopupStateName(stateName)
   if type(stateName) ~= "string" then return false end
   local state = string.lower(stateName)
-  return string.find(state, "/popup/editbinding", 1, true) == 1
+  return string.find(state, "editbinding", 1, true) ~= nil
 end
 
 local function popupStateStackFlags(stateStack)
@@ -1164,31 +1276,86 @@ idleMotion.noteActivity = function(gyroMagnitude,linearAccelerationMagnitude)
   return true
 end
 
+mic.sendLED = function()
+  if not ensureStatusUDP() then return end
+  -- DMB1 v1: 1=toggle mode, 1=latched ON. LED only; no microphone mute command.
+  local packet = "DMB1" .. string.char(1, mic.mode == "toggle" and 1 or 0, mic.toggleOn and 1 or 0)
+  pcall(function() statusUdp:sendto(packet, bridgeStatusHost, bridgeStatusPort) end)
+end
+
+mic.setMode = function(mode)
+  local normalized = mode == "toggle" and "toggle" or "button"
+  if mic.mode ~= normalized then
+    mic.mode = normalized
+    MIC_SYNC.reset()
+    mic.toggleOn = false
+    -- Preserve the physical pressed-high state: switching while held cannot
+    -- synthesize an extra toggle on the next packet.
+    emitButton(2, false, true)
+    mic.emitAxis(false, true)
+    persistSetting(mic.settingKey, normalized)
+  end
+  mic.sendLED()
+  return mic.mode
+end
+
+mic.getMode = function() return mic.mode end
+mic.getToggleState = function() return mic.toggleOn end
+mic.setInverted = function(value)
+  local newValue = value == true or value == 1 or value == "true"
+  if mic.inverted ~= newValue then
+    mic.inverted = newValue
+    persistSetting(mic.invertKey, newValue)
+    if mic.mode == "toggle" then
+      -- In a known onDown vehicle toggle, changing LED inversion must not
+      -- synthesize a new button press and change the vehicle function.
+      if MIC_SYNC.pulsedButton() then
+        emitButton(2, false)
+      else
+        emitButton(2, mic.active())
+      end
+      mic.emitAxis(mic.active(), true)
+    end
+  end
+  return mic.inverted
+end
+mic.getInverted = function() return mic.inverted end
+-- Request a fresh, read-only vehicle state. Never reassert the old axis
+-- during a reset/replacement: that would apply the previous vehicle's value
+-- to the newly loaded vehicle instead of simply updating the orange LED.
+mic.refreshVehicleState = function()
+  MIC_SYNC.invalidate()
+end
+
+local function eventTargetsCurrentVehicle(vehicleId)
+  local requestedId = tonumber(vehicleId)
+  if not requestedId or type(getPlayerVehicle) ~= "function" then return false end
+  local ok, vehicle = pcall(getPlayerVehicle, 0)
+  if not ok or not vehicle then return false end
+  local valid, activeId = pcall(function() return vehicle:getID() end)
+  return valid and requestedId == tonumber(activeId)
+end
+
 local function sendTouchBindingStatus(force)
   local active = hasBeamNGTouchBindings()
   local capture = bindingCaptureActive
-  local mouseForced = touchpadPolicyState.mouseMode
+  local mouseForced = touchpadPolicyState.mousePolicy == "on"
   local suppressTwoTapMouse = touchpadPolicyState.twoTapToggle
   if not force and active == lastTouchBindingState and capture == lastBindingCaptureState and
       mouseForced == touchpadPolicyState.lastMouseMode and suppressTwoTapMouse == touchpadPolicyState.lastTwoTapToggle and
       elapsed - bindingStatusAt < bindingHeartbeat then return end
   if not ensureStatusUDP() then return end
-  -- DSM2 v2: bound, binding-capture, forced Mouse mode, suppress Windows 2F
-  -- right-click. Bridge remains backward-compatible with DSM2 v1.
-  local packet = "DSM2" .. string.char(2, active and 1 or 0, capture and 1 or 0, mouseForced and 1 or 0, suppressTwoTapMouse and 1 or 0)
+  -- DSM2 v3: an explicit OFF must override automatic mouse fallback even
+  -- when no BeamNG bindings exist. 0=auto, 1=mouse on, 2=mouse off.
+  local mousePolicyCode = touchpadPolicyState.mousePolicy == "on" and 1 or (touchpadPolicyState.mousePolicy == "off" and 2 or 0)
+  local packet = "DSM2" .. string.char(3, active and 1 or 0, capture and 1 or 0, mousePolicyCode, suppressTwoTapMouse and 1 or 0)
   local ok = pcall(function() statusUdp:sendto(packet, bridgeStatusHost, bridgeStatusPort) end)
   local idleMinutes = normalizeBluetoothIdleTimeoutMinutes(bluetoothIdleTimeoutMinutes)
   local idlePacket = "DSC1" .. string.char(1, idleMinutes % 256, math.floor(idleMinutes / 256))
   pcall(function() statusUdp:sendto(idlePacket, bridgeStatusHost, bridgeStatusPort) end)
   idleMotion.sendConfig()
+  mic.sendLED()
   if ok then
-    if active ~= lastTouchBindingState or capture ~= lastBindingCaptureState or mouseForced ~= touchpadPolicyState.lastMouseMode or suppressTwoTapMouse ~= touchpadPolicyState.lastTwoTapToggle then
-      if capture then
-      elseif mouseForced then
-      elseif active then
-      else
-      end
-    end
     lastTouchBindingState = active
     lastBindingCaptureState = capture
     touchpadPolicyState.lastMouseMode = mouseForced
@@ -1256,7 +1423,10 @@ local function shouldCaptureTouchBinding(routeName)
   -- BeamNG 0.39's Vue controls editor is an EditBinding fullscreen popup
   -- layered over pause.options. The popup itself is therefore authoritative;
   -- requiring the legacy bindings route keeps capture false on the live UI.
-  return isTouchBindingCaptureRoute(routeName) or bindingEditPopupOpen
+  -- Reserve the touchpad throughout the Controls > Bindings screen, not only
+  -- during the short edit popup. This prevents Windows mouse0 from winning
+  -- the race with a newly emitted virtual touch input.
+  return isTouchBindingsRoute(routeName) or isTouchBindingCaptureRoute(routeName) or bindingEditPopupOpen
 end
 
 local function captureDebugSummary(routeName)
@@ -1280,13 +1450,28 @@ local function refreshBindingCapture(routeName)
   -- use route/popup detection only as a fallback.
   local observedCapture = (bindingInputCommandsDisabled and not settingsTextEntryActive) or bindingEditPopupOpen or
     (bindingRawEventsForwarded and (bindingEditPopupOpen or isTouchBindingsRoute(route)))
-  local capture = bindingRouteCaptureActive or observedCapture
+  -- BeamNG's own input-bindings service tracks modal capture even when the
+  -- Vue router does not notify this extension about its EditBinding dialog.
+  -- Only use that fallback in the Options controls screen (or when this build
+  -- does not expose a router), and never while a text field owns input.
+  local modalCapture = false
+  if core_input_bindings and type(core_input_bindings.isModalPopupOpen) == "function" then
+    local ok, active = pcall(core_input_bindings.isModalPopupOpen)
+    if ok and active == true and not settingsTextEntryActive then
+      local lowerRoute = type(route) == "string" and string.lower(route) or nil
+      modalCapture = lowerRoute == nil or
+        string.find(lowerRoute, "menu.options", 1, true) ~= nil or
+        string.find(lowerRoute, "controls", 1, true) ~= nil
+    end
+  end
+  local capture = bindingRouteCaptureActive or observedCapture or modalCapture
   if capture ~= bindingCaptureActive then
     bindingCaptureActive = capture
     sendTouchDebug("CAPTURE", captureDebugSummary(route))
-    -- Immediate ownership hand-off: a tap used as the new BeamNG binding must
-    -- never also become mouse0/click in Windows.
-    sendTouchBindingStatus(true)
+    -- Keep Windows mouse disabled throughout capture. When capture closes,
+    -- the periodic observer first checks whether a new touch binding was saved
+    -- before restoring the selected ownership policy.
+    if capture then sendTouchBindingStatus(true) end
   end
 end
 
@@ -1428,12 +1613,16 @@ end
 
 local function setTouchpadMouseMode(enabled)
   local value = enabled == true or enabled == 1 or enabled == "1" or tostring(enabled):lower() == "true"
-  if value == touchpadPolicyState.mouseMode then
+  -- Explicit ON/OFF may override an existing binding, but never capture.
+  -- Binding ownership is restored by the next OFF action.
+  local policy = value and "on" or "off"
+  if policy == touchpadPolicyState.mousePolicy then
     sendTouchBindingStatus(true)
     return value
   end
   resetTouchpadMappingState()
   touchpadPolicyState.mouseMode = value
+  touchpadPolicyState.mousePolicy = policy
   touchState.inputMode = value and "mouse" or "custom"
   persistSetting(touchpadPolicyState.mouseModeSettingKey, value)
   lastTouchBindingState, lastBindingCaptureState = nil, nil
@@ -1444,11 +1633,13 @@ local function setTouchpadMouseMode(enabled)
 end
 
 local function getTouchpadMouseMode()
-  return touchpadPolicyState.mouseMode
+  if touchpadPolicyState.mousePolicy == "on" then return true end
+  if touchpadPolicyState.mousePolicy == "off" then return false end
+  return not bindingCaptureActive and not hasBeamNGTouchBindings()
 end
 
 local function toggleTouchpadMouseMode()
-  return setTouchpadMouseMode(not touchpadPolicyState.mouseMode)
+  return setTouchpadMouseMode(not getTouchpadMouseMode())
 end
 
 local function setTwoFingerMouseToggleEnabled(enabled)
@@ -1501,15 +1692,25 @@ local function initializeRuntime()
   initialized = true
   customTouchpadMapping = readStoredCustomTouchpadMapping()
   selectedTouchpadInputMode = "custom"
-  touchpadPolicyState.mouseMode = readStoredBoolSetting(touchpadPolicyState.mouseModeSettingKey, false)
+  -- A fresh installation preserves V1.43's automatic unbound-mouse fallback.
+  -- An explicit OFF persists across launches instead of being overwritten by
+  -- the Bridge whenever a binding status packet is briefly unavailable.
+  local savedMouseMode = SETTINGS_STORE.get(touchpadPolicyState.mouseModeSettingKey, nil)
+  touchpadPolicyState.mousePolicy = savedMouseMode == nil and "auto" or
+    (settingIsExplicitTrue(savedMouseMode) and "on" or "off")
+  touchpadPolicyState.mouseMode = touchpadPolicyState.mousePolicy == "on"
   -- The dedicated 2F mouse-mode shortcut was removed from the public design.
   -- Keep button8 as a normal touchpad button; Mouse mode is toggled by the
   -- global BeamNG action, which can be assigned to any regular button/key.
   touchpadPolicyState.twoTapToggle = false
   persistSetting(touchpadPolicyState.twoTapToggleSettingKey, false)
   bluetoothIdleTimeoutMinutes = readStoredBluetoothIdleTimeoutMinutes()
+  mic.mode = SETTINGS_STORE.get(mic.settingKey, "button") == "toggle" and "toggle" or "button"
+  mic.inverted = readStoredBoolSetting(mic.invertKey, false)
+  mic.toggleOn = false
+  mic.pressedHigh = false
   idleMotion.enabled = idleMotion.readStored()
-  touchState.inputMode = touchpadPolicyState.mouseMode and "mouse" or "custom"
+  touchState.inputMode = touchpadPolicyState.mousePolicy ~= "off" and "mouse" or "custom"
   if not SETTINGS_STORE.get(TOUCH_BINDING_MIGRATION_KEY, false) then
     migrateLegacyTouchpadBindings()
     SETTINGS_STORE.set(TOUCH_BINDING_MIGRATION_KEY, true)
@@ -1521,6 +1722,7 @@ local function initializeRuntime()
   resetState()
   installInputCaptureObservers()
   refreshBindingCapture(currentRouteName())
+  hasNewTouchpadBinding() -- establish baseline; existing user bindings are not new
   sendTouchDebug("LOAD", captureDebugSummary())
   sendTouchBindingDebug()
   sendTouchBindingStatus(true)
@@ -1540,6 +1742,7 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
   elapsed = elapsed + math.max(0, tonumber(dtReal) or tonumber(dtSim) or tonumber(dtRaw) or 0)
   if deviceInstance == nil then ensureDevice() end
   if udp == nil then initUDP() end
+  MIC_SYNC.update(elapsed, deviceInstance, mic.mode == "toggle" and not staleResetDone and not micVehicleProbePaused)
   pollUDP()
   serviceTapButtons()
   serviceSwipeButtons()
@@ -1569,13 +1772,68 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
     -- Router polling remains a fallback. Engine-call observers are authoritative
     -- when BeamNG's binding editor is an overlay rather than a distinct route.
     refreshBindingCapture()
+    if hasNewTouchpadBinding() then
+      setTouchpadMouseMode(false)
+      sendTouchDebug("NEW_TOUCH_BINDING", "mouse=off source=poll")
+    end
     sendTouchBindingStatus(false)
   end
 end
 
+function M.onMicMuteVehicleState(vehicleId, sequence, target, value)
+  if mic.mode ~= "toggle" or staleResetDone then return end
+  local actual, firstObservation = MIC_SYNC.accept(elapsed, vehicleId, sequence, target, value)
+  if actual == nil or bindingCaptureActive then return end
+  if firstObservation and MIC_SYNC.pulsedButton() then
+    -- Stop latching button2 when its action is a true onDown toggle. This UP
+    -- does not activate the action; only a physical press creates a DOWN.
+    emitButton(2, false)
+  end
+  if mic.active() ~= actual then
+    -- Observation is passive: update the local latch and hardware LED, but
+    -- do NOT emit a virtual button/axis event in response to the vehicle.
+    mic.toggleOn = actual ~= mic.inverted
+    mic.sendLED()
+  end
+end
+
+function M.onVehicleSwitched(oldId, newId, player)
+  if player == nil or tonumber(player) == 0 then mic.refreshVehicleState() end
+end
+
+function M.onVehicleSpawned(vehicleId)
+  if eventTargetsCurrentVehicle(vehicleId) then mic.refreshVehicleState() end
+end
+
+function M.onVehicleReplaced(vehicleId)
+  -- The engine can reuse the same object ID for a newly chosen vehicle.
+  if eventTargetsCurrentVehicle(vehicleId) then mic.refreshVehicleState() end
+end
+
+function M.onVehicleResetted(vehicleId)
+  -- Ctrl+R/repair/respawn can rebuild the vehicle Lua state without changing
+  -- its object ID. A fresh probe must NOT reset the physical Mic Mute latch.
+  if eventTargetsCurrentVehicle(vehicleId) then mic.refreshVehicleState() end
+end
+
+function M.onClientEndMission()
+  micVehicleProbePaused = true
+  MIC_SYNC.invalidate()
+end
+
+function M.onClientStartMission()
+  micVehicleProbePaused = false
+  mic.refreshVehicleState()
+end
+
 function M.onInputBindingsChanged()
+  mic.refreshVehicleState()
   -- BeamNG writes user changes as the regular device .diff inputmap. Re-scan
   -- immediately so mouse fallback stops as soon as a touchpad control is bound.
+  if hasNewTouchpadBinding() then
+    setTouchpadMouseMode(false)
+    sendTouchDebug("NEW_TOUCH_BINDING", "mouse=off source=bindings-changed")
+  end
   sendTouchBindingDebug()
   sendTouchBindingStatus(true)
 end
@@ -1595,6 +1853,11 @@ end
 
 M.onAfterRouteChange = onAfterRouteChange
 M.onUIStateTriggered = onUIStateTriggered
+M.setMicMuteInverted = mic.setInverted
+M.getMicMuteInverted = mic.getInverted
+M.setMicMuteInputMode = mic.setMode
+M.getMicMuteInputMode = mic.getMode
+M.getMicMuteToggleState = mic.getToggleState
 M.setTouchpadCustomMapping = setTouchpadCustomMapping
 M.getTouchpadCustomMapping = getTouchpadCustomMapping
 M.setTouchpadMouseMode = setTouchpadMouseMode

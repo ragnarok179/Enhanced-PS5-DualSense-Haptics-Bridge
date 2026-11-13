@@ -75,7 +75,7 @@ local SCHEMA7_SURFACE_SLIP_REFERENCES = {
   dirt = 8, dusty_dirt = 8, sandy_road = 5, sand = 3, mud = 4,
   gravel = 10, grass = 5, snow = 4, rock = 8, cobblestone = 6, rumble_strip = 4,
 }
-local USER_SETTINGS_SCHEMA = 12
+local USER_SETTINGS_SCHEMA = 14
 local HAPTIC_REFERENCE_PERCENT = 100
 local SURFACE_MASTER_REFERENCE_PERCENT = 100
 local LED_REFERENCE_PERCENT = 86
@@ -117,14 +117,22 @@ local function defaultUserSettings()
     adaptiveTriggers = {
       l2BrakeEnabled = true,
       l2BrakeStartPercent = 25,
+      l2StartPositionPercent = 0,
+      l2EndPositionPercent = 100,
       l2BrakeEndPercent = 75,
       absEnabled = true,
       absPercent = 75,
       r2ThrottleEnabled = true,
       r2ThrottleStartPercent = 13,
+      r2StartPositionPercent = 0,
+      r2EndPositionPercent = 100,
       r2ThrottleEndPercent = 13,
       r2EffectsEnabled = true,
       r2EffectsPercent = R2_JOLT_REFERENCE_PERCENT,
+      r2LimiterEnabled = true,
+      r2TcsEnabled = true,
+      r2WheelspinPulseEnabled = true,
+      r2WheelspinPulsePercent = 35,
     },
     lighting = { enabled = true, brightnessPercent = LED_REFERENCE_PERCENT }
   }
@@ -136,6 +144,10 @@ local function clampPercent(value, fallback)
   if value < 1 then return 1 end
   if value > 100 then return 100 end
   return floor(value + 0.5)
+end
+
+local function positionPercent(value)
+  return clamp(tonumber(value) or 0, 0, 90) / 100
 end
 
 local function percentTo255(value)
@@ -289,6 +301,10 @@ local function normalizeUserSettings(data)
     d.adaptiveTriggers.l2BrakeEndPercent = legacyEnd
     d.adaptiveTriggers.l2BrakeStartPercent = max(1, min(legacyEnd, floor(legacyEnd * 0.25 + 0.5)))
   end
+  d.adaptiveTriggers.l2StartPositionPercent = clamp(floor((tonumber(a.l2StartPositionPercent) or 0) + 0.5), 0, 90)
+  d.adaptiveTriggers.r2StartPositionPercent = clamp(floor((tonumber(a.r2StartPositionPercent) or 0) + 0.5), 0, 90)
+  d.adaptiveTriggers.l2EndPositionPercent = clamp(floor((tonumber(a.l2EndPositionPercent) or 100) + 0.5), d.adaptiveTriggers.l2StartPositionPercent + 1, 100)
+  d.adaptiveTriggers.r2EndPositionPercent = clamp(floor((tonumber(a.r2EndPositionPercent) or 100) + 0.5), d.adaptiveTriggers.r2StartPositionPercent + 1, 100)
   d.adaptiveTriggers.absEnabled = a.absEnabled ~= false
   d.adaptiveTriggers.absPercent = clampPercent(a.absPercent, 75)
   d.adaptiveTriggers.r2ThrottleEnabled = a.r2ThrottleEnabled ~= false
@@ -301,6 +317,10 @@ local function normalizeUserSettings(data)
     d.adaptiveTriggers.r2ThrottleEndPercent = legacyR2
   end
   d.adaptiveTriggers.r2EffectsEnabled = a.r2EffectsEnabled ~= false
+  d.adaptiveTriggers.r2LimiterEnabled = a.r2LimiterEnabled ~= false
+  d.adaptiveTriggers.r2TcsEnabled = a.r2TcsEnabled ~= false
+  d.adaptiveTriggers.r2WheelspinPulseEnabled = a.r2WheelspinPulseEnabled ~= false
+  d.adaptiveTriggers.r2WheelspinPulsePercent = clampPercent(a.r2WheelspinPulsePercent, 35)
   local oldR2 = clampPercent(a.r2EffectsPercent, sourceSchema >= 3 and R2_JOLT_REFERENCE_PERCENT or 100)
   d.adaptiveTriggers.r2EffectsPercent = sourceSchema >= 3 and oldR2 or clampPercent(oldR2 * R2_JOLT_REFERENCE_PERCENT / 100, R2_JOLT_REFERENCE_PERCENT)
 
@@ -319,10 +339,11 @@ local HAPTIC_CACHE_KEYS = {
   "impactEnabled", "impactPercent",
 }
 local TRIGGER_CACHE_KEYS = {
-  "l2BrakeEnabled", "l2BrakeStartPercent", "l2BrakeEndPercent", "l2BrakePercent",
+  "l2BrakeEnabled", "l2BrakeStartPercent", "l2BrakeEndPercent", "l2StartPositionPercent", "l2EndPositionPercent", "l2BrakePercent",
   "absEnabled", "absPercent",
-  "r2ThrottleEnabled", "r2ThrottleStartPercent", "r2ThrottleEndPercent", "r2ThrottlePercent",
-  "r2EffectsEnabled", "r2EffectsPercent",
+  "r2ThrottleEnabled", "r2ThrottleStartPercent", "r2ThrottleEndPercent", "r2StartPositionPercent", "r2EndPositionPercent", "r2ThrottlePercent",
+  "r2EffectsEnabled", "r2EffectsPercent", "r2LimiterEnabled", "r2TcsEnabled",
+  "r2WheelspinPulseEnabled", "r2WheelspinPulsePercent",
 }
 local LIGHT_CACHE_KEYS = { "enabled", "brightnessPercent" }
 
@@ -446,17 +467,25 @@ local function buildUserSettingsPacket(s)
     impactEnabled = s.haptics.impactEnabled,
     impactStrength = percentTo255(s.haptics.impactPercent),
     l2BrakeEnabled = s.adaptiveTriggers.l2BrakeEnabled,
+    l2StartPosition = positionPercent(s.adaptiveTriggers.l2StartPositionPercent),
+    l2EndPosition = positionPercent(s.adaptiveTriggers.l2EndPositionPercent),
     l2BrakeStartStrength = percentToTrigger48(s.adaptiveTriggers.l2BrakeStartPercent),
     l2BrakeEndStrength = percentToTrigger48(s.adaptiveTriggers.l2BrakeEndPercent),
     l2BrakeStrength = percentToTrigger48(s.adaptiveTriggers.l2BrakeEndPercent),
     absEnabled = s.adaptiveTriggers.absEnabled,
     absStrength = percentToTrigger48(s.adaptiveTriggers.absPercent),
     r2ThrottleEnabled = s.adaptiveTriggers.r2ThrottleEnabled,
+    r2StartPosition = positionPercent(s.adaptiveTriggers.r2StartPositionPercent),
+    r2EndPosition = positionPercent(s.adaptiveTriggers.r2EndPositionPercent),
     r2ThrottleStartStrength = percentToTrigger48(s.adaptiveTriggers.r2ThrottleStartPercent),
     r2ThrottleEndStrength = percentToTrigger48(s.adaptiveTriggers.r2ThrottleEndPercent),
     r2ThrottleStrength = percentToTrigger48(s.adaptiveTriggers.r2ThrottleStartPercent),
     r2EffectsEnabled = s.adaptiveTriggers.r2EffectsEnabled,
     r2EffectsStrength = percentToTrigger48(s.adaptiveTriggers.r2EffectsPercent),
+    r2LimiterEnabled = s.adaptiveTriggers.r2LimiterEnabled,
+    r2TcsEnabled = s.adaptiveTriggers.r2TcsEnabled,
+    r2WheelspinPulseEnabled = s.adaptiveTriggers.r2WheelspinPulseEnabled,
+    r2WheelspinPulseStrength = percentToTrigger48(s.adaptiveTriggers.r2WheelspinPulsePercent),
     lightingEnabled = s.lighting.enabled,
     lightingBrightness = percentTo255(s.lighting.brightnessPercent),
     surfaceRollingStrengths = rollingStrengths,

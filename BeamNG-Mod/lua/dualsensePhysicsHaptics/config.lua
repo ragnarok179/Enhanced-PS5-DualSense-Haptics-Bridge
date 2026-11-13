@@ -3,7 +3,7 @@ return {
 
   compatibility = {
     protocolId = "DPH",
-    modVersion = "V1.43",
+    modVersion = "V1.50",
     protocolVersion = 43,
     protocolMin = 43,
     protocolMax = 43,

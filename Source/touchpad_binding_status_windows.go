@@ -15,58 +15,81 @@ var touchpadBindingState struct {
 	bound               atomic.Bool
 	capture             atomic.Bool
 	mouseForced         atomic.Bool
+	mousePolicy         atomic.Int32 // 0=auto, 1=on, 2=off
 	suppressTwoTapMouse atomic.Bool
 	lastSeen            atomic.Int64
 }
 
-func touchpadMouseAllowedForState(bound, capture, mouseForced, statusFresh bool) bool {
-	if !statusFresh {
-		// Fail safe: if BeamNG disappears, do not strand the touchpad in a stale
-		// virtual-input ownership state.
-		return true
-	}
-	if capture {
+func touchpadMouseAllowedForPolicy(bound, capture bool, policy int32, statusFresh bool) bool {
+	// In the absence of a current BeamNG status, never inject unexpected
+	// cursor movement or clicks. Explicit OFF must be authoritative.
+	if !statusFresh || capture {
 		return false
 	}
-	if mouseForced {
+	if policy == 1 {
 		return true
+	} // explicit Windows mouse overrides saved bindings
+	return policy == 0 && !bound
+}
+
+// Compatibility helper for the legacy DSM2 v2 boolean 'mouseForced'.
+func touchpadMouseAllowedForState(bound, capture, mouseForced, statusFresh bool) bool {
+	policy := int32(0)
+	if mouseForced {
+		policy = 1
 	}
-	return !bound
+	return touchpadMouseAllowedForPolicy(bound, capture, policy, statusFresh)
 }
 
 func touchpadMouseAllowed() bool {
-	// BeamNG refreshes ownership every 500 ms. A fresh status owns the decision;
-	// stale/missing status falls back to mouse so the pad never becomes dead.
+	// BeamNG refreshes ownership every 500 ms. Never inject mouse input
+	// after the status becomes stale, even if it was explicitly enabled.
 	last := touchpadBindingState.lastSeen.Load()
 	fresh := last != 0 && time.Since(time.Unix(0, last)) <= 2*time.Second
-	return touchpadMouseAllowedForState(
+	return touchpadMouseAllowedForPolicy(
 		touchpadBindingState.bound.Load(),
 		touchpadBindingState.capture.Load(),
-		touchpadBindingState.mouseForced.Load(),
+		touchpadBindingState.mousePolicy.Load(),
 		fresh,
 	)
 }
 
 func updateTouchpadBindingState(bound, capture, mouseForced, suppressTwoTapMouse bool) {
+	policy := int32(0)
+	if mouseForced {
+		policy = 1
+	}
+	updateTouchpadBindingPolicy(bound, capture, policy, suppressTwoTapMouse)
+}
+
+func updateTouchpadBindingPolicy(bound, capture bool, policy int32, suppressTwoTapMouse bool) {
+	if policy < 0 || policy > 2 {
+		policy = 2
+	}
+	oldPolicy := touchpadBindingState.mousePolicy.Swap(policy)
+	mouseForced := policy == 1
 	oldBound := touchpadBindingState.bound.Swap(bound)
 	oldCapture := touchpadBindingState.capture.Swap(capture)
 	oldMouseForced := touchpadBindingState.mouseForced.Swap(mouseForced)
 	oldSuppress := touchpadBindingState.suppressTwoTapMouse.Swap(suppressTwoTapMouse)
 	touchpadBindingState.lastSeen.Store(time.Now().UnixNano())
-	if oldBound == bound && oldCapture == capture && oldMouseForced == mouseForced && oldSuppress == suppressTwoTapMouse {
+	if oldBound == bound && oldCapture == capture && oldMouseForced == mouseForced && oldSuppress == suppressTwoTapMouse && oldPolicy == policy {
 		return
 	}
 	owner := "automatic mouse fallback"
 	if capture {
 		owner = "BeamNG binding capture"
-	} else if mouseForced {
-		owner = "forced Windows mouse mode"
+	} else if policy == 1 {
+		owner = "Windows mouse ON"
 	} else if bound {
 		owner = "BeamNG touchpad binding"
+	} else if policy == 2 {
+		owner = "Windows mouse OFF"
 	}
-	if touchpadBindingDiagnosticsEnabled() {
-		fmt.Printf("Touchpad ownership: %s (bound=%t capture=%t mouse=%t 2Freserved=%t)\n", owner, bound, capture, mouseForced, suppressTwoTapMouse)
-	}
+	// Log only actual ownership transitions (never the 500-ms heartbeat).
+	// This makes broken UI/hotkey/binding handoffs diagnosable from the
+	// regular Bridge log without requiring a separate debug build.
+	fmt.Printf("Touchpad ownership: %s (bound=%t capture=%t policy=%d 2Freserved=%t)\n", owner, bound, capture, policy, suppressTwoTapMouse)
 }
 
 func touchpadMouseTwoFingerTapAllowed() bool {
@@ -84,6 +107,7 @@ func startTouchpadBindingStatusReceiver(done <-chan struct{}) {
 	}
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
+		fmt.Printf("Touchpad status receiver could not bind %s: %v\n", touchpadBindingStatusAddress, err)
 		return
 	}
 	go func() {
@@ -101,7 +125,11 @@ func startTouchpadBindingStatusReceiver(done <-chan struct{}) {
 			if err != nil {
 				continue
 			}
-			if n >= 9 && string(buf[:4]) == "DSM2" && buf[4] == 2 {
+			if n == 7 && string(buf[:4]) == "DMB1" && buf[4] == 1 && buf[5] <= 1 && buf[6] <= 1 {
+				updateMicMuteLED(buf[5] == 1, buf[6] == 1)
+			} else if n >= 9 && string(buf[:4]) == "DSM2" && buf[4] == 3 {
+				updateTouchpadBindingPolicy(buf[5] != 0, buf[6] != 0, int32(buf[7]), buf[8] != 0)
+			} else if n >= 9 && string(buf[:4]) == "DSM2" && buf[4] == 2 {
 				updateTouchpadBindingState(buf[5] != 0, buf[6] != 0, buf[7] != 0, buf[8] != 0)
 			} else if n >= 7 && string(buf[:4]) == "DSM2" && buf[4] == 1 {
 				updateTouchpadBindingState(buf[5] != 0, buf[6] != 0, false, false)

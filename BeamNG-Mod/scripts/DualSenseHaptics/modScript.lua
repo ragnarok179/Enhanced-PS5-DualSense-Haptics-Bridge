@@ -11,7 +11,8 @@ local function keepLoaded(name)
 end
 
 -- Keep the registration order deterministic. The settings store is available
--- before feature extensions consume mod-owned settings.
+-- before feature extensions consume mod-owned settings. The lifecycle extension
+-- is last so other extensions release their resources before it is unloaded.
 keepLoaded("dualsenseSettingsStore")
 keepLoaded("dualsenseNativeTriggerGuard")
 keepLoaded("dualsensePhysicsDirectRPMLights")
@@ -19,3 +20,4 @@ keepLoaded("dualsenseExtendedInputs")
 keepLoaded("dualsenseMotionInputs")
 keepLoaded("dualsenseControllerSpeaker")
 keepLoaded("dualsenseCollisionSoundProbeGE")
+keepLoaded("dualsenseModLifecycle")
