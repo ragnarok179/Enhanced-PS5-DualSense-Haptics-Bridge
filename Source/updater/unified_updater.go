@@ -19,7 +19,6 @@ import (
 
 const (
 	unifiedUpdaterName = "UPDATE_DUALSENSE.exe"
-	legacyUpdaterAlias = "UPDATE_BRIDGE.exe"
 	modMarkerPath      = "lua/dualsensePhysicsHaptics/config.lua"
 	projectName        = "Enhanced PS5 DualSense Haptics"
 )
@@ -69,10 +68,6 @@ func runWorker(installRoot string, o updaterOptions) int {
 	}
 
 	bridgeCurrent := compatibility.CompareVersions(buildinfo.DisplayVersion, target.Version) == 0
-	legacyMigration := bridgeCurrent
-	if pending, ok := readPendingCompatibilityRequest(installRoot); ok && strings.TrimSpace(pending.ModVersion) != "" {
-		legacyMigration = compatibility.CompareVersions(pending.ModVersion, target.Version) < 0
-	}
 	if compatibility.CompareVersions(target.Version, buildinfo.DisplayVersion) < 0 {
 		fmt.Printf("[INFO] Installed Bridge %s is newer than the latest complete release %s; no downgrade will be performed.\n", buildinfo.DisplayVersion, target.Version)
 		return 0
@@ -81,7 +76,7 @@ func runWorker(installRoot string, o updaterOptions) int {
 	fmt.Printf("Installed Bridge: %s\n", buildinfo.DisplayVersion)
 	fmt.Printf("Latest complete release: %s\n", target.Version)
 	fmt.Println()
-	printPreUpdateGuide(target, legacyMigration)
+	printPreUpdateGuide(target)
 	fmt.Print("Continue? [Y/N]: ")
 	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	answer = strings.ToLower(strings.TrimSpace(answer))
@@ -189,7 +184,7 @@ func runWorker(installRoot string, o updaterOptions) int {
 		}
 	}
 
-	guidePath, guideErr := writeManualInstallGuide(manualModPath, target.Version, legacyMigration)
+	guidePath, guideErr := writeManualInstallGuide(manualModPath, target.Version)
 	if guideErr != nil {
 		fmt.Fprintln(os.Stderr, "[WARNING] Unable to save the update instructions next to the BeamNG mod ZIP:", guideErr)
 	}
@@ -198,88 +193,47 @@ func runWorker(installRoot string, o updaterOptions) int {
 	if guidePath != "" {
 		_ = openTextGuide(guidePath)
 	}
-	printFinalInstallGuide(manualModPath, target.Version, legacyMigration, guidePath)
+	printFinalInstallGuide(manualModPath, guidePath)
 	return 0
 }
 
-func printPreUpdateGuide(target projectRelease, legacyMigration bool) {
+func printPreUpdateGuide(target projectRelease) {
 	fmt.Println("============================================================")
-	if legacyMigration {
-		fmt.Println("ONE-TIME MIGRATION GUIDE")
-	} else {
-		fmt.Println("UPDATE GUIDE")
-	}
+	fmt.Println("UPDATE GUIDE")
 	fmt.Println("============================================================")
 	fmt.Println("1. Close BeamNG if it is open.")
 	fmt.Printf("2. Press Y to continue with the %s update.\n", target.Version)
-	fmt.Println("3. When the Downloads folder and installation instructions open, follow the BeamNG steps shown there.")
+	fmt.Println("3. Follow the installation instructions after downloading.")
 	fmt.Println()
 }
 
-func printFinalInstallGuide(modPath, version string, legacyMigration bool, guidePath string) {
+func printFinalInstallGuide(modPath, guidePath string) {
 	fmt.Println()
 	fmt.Println("============================================================")
-	if legacyMigration {
-		fmt.Println("ONE-TIME MIGRATION - BEAMNG INSTALLATION")
-	} else {
-		fmt.Println("BEAMNG MOD INSTALLATION")
-	}
+	fmt.Println("BEAMNG MOD INSTALLATION")
 	fmt.Println("============================================================")
-	fmt.Println("If your old mod came from the BeamNG Repository:")
-	fmt.Println("1. Open BeamNG.")
-	fmt.Println("2. Open Mod Manager.")
-	fmt.Println("3. Select Enhanced PS5 DualSense Haptics.")
-	fmt.Println("4. Open its Repository page from the mod entry.")
-	fmt.Println("5. Unsubscribe and remove the old Repository version.")
-	fmt.Println("6. Close BeamNG.")
-	fmt.Printf("7. Move %s into YOUR BeamNG mods folder.\n", filepath.Base(modPath))
-	fmt.Println("8. Do NOT extract the ZIP.")
-	fmt.Println("9. Start BeamNG and make sure the mod is enabled.")
-	fmt.Println()
-	fmt.Println("If your old mod was installed manually:")
 	fmt.Println("1. Close BeamNG.")
-	fmt.Println("2. Remove the old Enhanced PS5 DualSense Haptics ZIP.")
-	fmt.Printf("3. Move %s into YOUR BeamNG mods folder.\n", filepath.Base(modPath))
+	fmt.Println("2. Remove the previous Enhanced PS5 DualSense Haptics mod ZIP.")
+	fmt.Printf("3. Place %s in your BeamNG mods folder.\n", filepath.Base(modPath))
 	fmt.Println("4. Do NOT extract the ZIP.")
 	fmt.Println("5. Start BeamNG and make sure the mod is enabled.")
 	if guidePath != "" {
-		fmt.Println()
 		fmt.Printf("Instructions: %s\n", guidePath)
 	}
-	_ = version
 }
 
-func manualInstallGuideText(version string, legacyMigration bool) string {
-	var b strings.Builder
-	b.WriteString(projectName + " " + version + "\r\n")
-	if legacyMigration {
-		b.WriteString("ONE-TIME MIGRATION - BEAMNG INSTALLATION\r\n")
-	} else {
-		b.WriteString("BEAMNG MOD INSTALLATION\r\n")
-	}
-	b.WriteString("\r\nIF YOUR OLD MOD CAME FROM THE BEAMNG REPOSITORY:\r\n")
-	b.WriteString("1. Open BeamNG.\r\n")
-	b.WriteString("2. Open Mod Manager.\r\n")
-	b.WriteString("3. Select Enhanced PS5 DualSense Haptics.\r\n")
-	b.WriteString("4. Open its Repository page from the mod entry.\r\n")
-	b.WriteString("5. Unsubscribe and remove the old Repository version.\r\n")
-	b.WriteString("6. Close BeamNG.\r\n")
-	b.WriteString("7. Move Enhanced_PS5_DualSense_Haptics_" + version + ".zip into YOUR BeamNG mods folder.\r\n")
-	b.WriteString("8. Do NOT extract the ZIP.\r\n")
-	b.WriteString("9. Start BeamNG and make sure the mod is enabled.\r\n")
-	b.WriteString("\r\nIF YOUR OLD MOD WAS INSTALLED MANUALLY:\r\n")
-	b.WriteString("1. Close BeamNG.\r\n")
-	b.WriteString("2. Remove the old Enhanced PS5 DualSense Haptics ZIP.\r\n")
-	b.WriteString("3. Move Enhanced_PS5_DualSense_Haptics_" + version + ".zip into YOUR BeamNG mods folder.\r\n")
-	b.WriteString("4. Do NOT extract the ZIP.\r\n")
-	b.WriteString("5. Start BeamNG and make sure the mod is enabled.\r\n")
-	return b.String()
+func manualInstallGuideText(version string) string {
+	return projectName + " " + version + "\r\nBEAMNG MOD INSTALLATION\r\n\r\n" +
+		"1. Close BeamNG.\r\n" +
+		"2. Remove the previous Enhanced PS5 DualSense Haptics mod ZIP.\r\n" +
+		"3. Place Enhanced_PS5_DualSense_Haptics_" + version + ".zip in your BeamNG mods folder.\r\n" +
+		"4. Do NOT extract the ZIP.\r\n" +
+		"5. Start BeamNG and make sure the mod is enabled.\r\n"
 }
 
-func writeManualInstallGuide(modPath, version string, legacyMigration bool) (string, error) {
-	dir := filepath.Dir(modPath)
-	guide := filepath.Join(dir, "Enhanced_PS5_DualSense_Haptics_"+version+"_INSTALL_INSTRUCTIONS.txt")
-	if err := os.WriteFile(guide, []byte(manualInstallGuideText(version, legacyMigration)), 0o644); err != nil {
+func writeManualInstallGuide(modPath, version string) (string, error) {
+	guide := filepath.Join(filepath.Dir(modPath), "Enhanced_PS5_DualSense_Haptics_"+version+"_INSTALL_INSTRUCTIONS.txt")
+	if err := os.WriteFile(guide, []byte(manualInstallGuideText(version)), 0o644); err != nil {
 		return "", err
 	}
 	return guide, nil
@@ -501,7 +455,6 @@ func verifyBridgeRuntimePackage(root, targetVersion string) error {
 		"START_BRIDGE.exe",
 		"START_BRIDGE_AND_BEAMNG.exe",
 		unifiedUpdaterName,
-		legacyUpdaterAlias,
 		filepath.Join("Bridge", "EnhancedPS5DualSenseHapticsUSB.exe"),
 		filepath.Join("Bridge", "EnhancedPS5DualSenseHapticsBluetooth.exe"),
 		manifestName,

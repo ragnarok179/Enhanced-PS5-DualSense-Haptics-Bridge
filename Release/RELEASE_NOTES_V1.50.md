@@ -42,3 +42,10 @@ Automated tests and Windows builds cannot replace a real DualSense USB/Bluetooth
 - No Bridge wire protocol or Windows executable functionality changes are required by this fix.
 
 Manual release procedure is unchanged: publish the two ZIPs with their exact V1.50 names as release assets. GitHub Actions is optional.
+
+
+## Nettoyage de la distribution et diagnostics
+
+- L’ancien moteur de migration `UPDATE_BRIDGE.exe` et les procédures destinées aux versions V1.42 et antérieures ont été retirés. Le nom `UPDATE_BRIDGE.exe` reste comme **alias identique à `UPDATE_DUALSENSE.exe`** afin de satisfaire la vérification de l’updater V1.43. `UPDATE_DUALSENSE.exe` reste l'unique updater, avec prise en charge depuis V1.43.
+- L'affichage public du terminal reprend la présentation de la V1.43 : état de connexion manette/BeamNG, sans transitions internes du touchpad. Les détails du touchpad restent disponibles uniquement dans les diagnostics.
+- Les informations de compatibilité sont générées pendant la CI depuis la version du code compilé ; aucune release n'est créée automatiquement.

@@ -1,3 +1,5 @@
+> Historical V1.43 audit. The V1.50 updater no longer supports migrations from V1.42 and earlier.
+
 # V1.43 repository build audit
 
 - Go R2 semantic force correction integrated in Source/gameplay_effects.go.

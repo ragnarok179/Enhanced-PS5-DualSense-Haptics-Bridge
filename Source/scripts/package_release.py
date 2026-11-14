@@ -31,7 +31,6 @@ RUNTIME_FILES = (
     "Diagnostics/OPEN_LOGS_FOLDER.bat",
     "Diagnostics/RUN_DIAGNOSTIC.bat",
     "Diagnostics/Run-Diagnostic.ps1",
-    "IMPORTANT_GUIDE_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt",
     "LICENSE",
     "README.md",
     "THIRD_PARTY_NOTICES.md",
@@ -72,6 +71,9 @@ def build_windows(source: Path, stage: Path) -> dict[str, Path]:
         subprocess.run(cmd, cwd=source, env=env, check=True)
         binaries[rel] = dest
     binaries["START_BRIDGE_AND_BEAMNG.exe"] = binaries["START_BRIDGE.exe"]
+    # V1.43's published updater requires this filename when validating the
+    # downloaded runtime. It is only an alias of the current unified updater;
+    # the older migration implementation is not included in either file.
     binaries["UPDATE_BRIDGE.exe"] = binaries["UPDATE_DUALSENSE.exe"]
     return binaries
 
@@ -82,6 +84,8 @@ def verify_version(repo: Path) -> str:
     if not match:
         raise ValueError("Could not read display version")
     version = match.group(1)
+    # This updates the *build candidate* index, not GitHub's latest public release.
+    subprocess.run([sys.executable, str(repo / "Source/scripts/generate_compatibility.py"), "--repo-root", str(repo)], check=True)
     subprocess.run([sys.executable, str(repo / "Source/scripts/validate_update_safety.py"), "--repo-root", str(repo)], check=True)
     return version
 

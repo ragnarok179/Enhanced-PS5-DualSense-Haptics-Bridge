@@ -1,74 +1,50 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 )
 
-func TestCompatibilityEnvelopeSupportedProtocols(t *testing.T) {
-	for _, version := range []int{41, 42, 43} {
-		packet := []byte(fmt.Sprintf(`{"protocolId":"DPH","modVersion":"V1.3","v":%d}`, version))
-		env, ok := inspectTelemetryEnvelope(packet)
-		if !ok || env.Version != version || !gameplayProtocolSupported(env.Version) {
-			t.Fatalf("supported protocol %d not accepted: %+v ok=%t", version, env, ok)
+func TestRuntimeProtocol43Only(t *testing.T) {
+	for _, protocol := range []int{41, 42, 44} {
+		if gameplayProtocolSupported(protocol) {
+			t.Fatalf("unsupported wire generation %d accepted", protocol)
 		}
 	}
-	if gameplayProtocolSupported(40) {
-		t.Fatal("protocol 40 must remain outside the V1.3+ support floor")
+	if !gameplayProtocolSupported(43) {
+		t.Fatal("V1.43+ wire generation rejected")
 	}
 }
 
-func TestCompatibilityEnvelopeFutureProtocolRequiresUpdate(t *testing.T) {
-	env, ok := inspectTelemetryEnvelope([]byte(`{"protocolId":"DPH","modVersion":"V1.43","protocolMin":44,"protocolMax":44,"v":44}`))
-	if !ok || env.Version != 44 {
-		t.Fatalf("bad envelope: %+v ok=%t", env, ok)
-	}
-	if gameplayProtocolSupported(env.Version) {
-		t.Fatal("Bridge V1.43 must not claim future wire generation 44 support")
+func TestFutureProtocolTriggersUpdate(t *testing.T) {
+	guard := protocolCompatibilityGuard{}
+	stopped := false
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.52","protocolMin":44,"protocolMax":44,"v":44}`)
+	if !guard.handlePacket(packet, false, func() { stopped = true }) || !stopped {
+		t.Fatal("future wire protocol must request an update")
 	}
 }
 
-func TestPendingCompatibilityUsesNewLayout(t *testing.T) {
-	root := filepath.Join("root", "bridge")
-	want := filepath.Join(root, "Config", "pending_bridge_compatibility.json")
-	if got := pendingCompatibilityPath(root); got != want {
+func TestPendingCompatibilityPath(t *testing.T) {
+	want := filepath.Join("root", "Config", "pending_bridge_compatibility.json")
+	if got := pendingCompatibilityPath("root"); got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
 
-func TestV143GuardAllowsV13ForOneTimeMigration(t *testing.T) {
+func TestV143ModCanConnectToV150Bridge(t *testing.T) {
 	guard := protocolCompatibilityGuard{}
 	stopped := false
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.3","protocolMin":41,"protocolMax":41,"v":41}`)
-	if consumed := guard.handlePacket(packet, false, func() { stopped = true }); consumed {
-		t.Fatal("supported V1.3 packet should continue through telemetry decoding")
-	}
-	if stopped {
-		t.Fatal("V1.3 migration must not stop Bridge V1.43")
+	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.43","protocolMin":43,"protocolMax":43,"v":43}`)
+	if guard.handlePacket(packet, false, func() { stopped = true }) || stopped {
+		t.Fatal("V1.43 must still be readable by V1.50 Bridge for updater guidance")
 	}
 }
 
-func TestV151GuardAcceptsSynchronizedRelease(t *testing.T) {
+func TestV150SynchronizedBridge(t *testing.T) {
 	guard := protocolCompatibilityGuard{}
 	stopped := false
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.50","protocolMin":43,"protocolMax":43,"v":43}`)
-	if consumed := guard.handlePacket(packet, false, func() { stopped = true }); consumed {
-		t.Fatal("synchronized V1.50 packet should continue through telemetry decoding")
-	}
-	if stopped {
-		t.Fatal("synchronized V1.50 release must not stop")
-	}
-}
-
-func TestV151GuardStopsNewerProjectRelease(t *testing.T) {
-	guard := protocolCompatibilityGuard{}
-	stopped := false
-	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.52","protocolMin":43,"protocolMax":43,"v":43}`)
-	if consumed := guard.handlePacket(packet, false, func() { stopped = true }); !consumed {
-		t.Fatal("newer mod release must be consumed by version guard")
-	}
-	if !stopped {
-		t.Fatal("newer mod release must stop the older Bridge until manual update")
+	if guard.handlePacket([]byte(`{"protocolId":"DPH","modVersion":"V1.50","protocolMin":43,"protocolMax":43,"v":43}`), false, func() { stopped = true }) || stopped {
+		t.Fatal("V1.50 failed to synchronize")
 	}
 }

@@ -215,7 +215,7 @@ BeamNG
                      │                                 │
                      ▼                                 ▼
           Gameplay telemetry decoder          DualSense HID input
-       supported wire generations 41-43      touchpad / buttons / IMU
+       current wire protocol 43      touchpad / buttons / IMU
                      │                                 │
                      ▼                                 ├─► UDP 6977 ─► extended inputs
              Common Feel Engine                        └─► UDP 6979 ─► motion inputs

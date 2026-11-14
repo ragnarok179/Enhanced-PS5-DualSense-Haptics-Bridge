@@ -13,12 +13,11 @@ import (
 )
 
 type telemetryEnvelope struct {
-	Project      bool
-	Version      int
-	ModVersion   string
-	ProtocolMin  int
-	ProtocolMax  int
-	LegacyCompat bool
+	Project     bool
+	Version     int
+	ModVersion  string
+	ProtocolMin int
+	ProtocolMax int
 }
 
 type protocolCompatibilityGuard struct {
@@ -30,12 +29,11 @@ type protocolCompatibilityGuard struct {
 
 func inspectTelemetryEnvelope(data []byte) (telemetryEnvelope, bool) {
 	var h struct {
-		ProtocolID   string `json:"protocolId"`
-		Version      int    `json:"v"`
-		ModVersion   string `json:"modVersion"`
-		ProtocolMin  int    `json:"protocolMin"`
-		ProtocolMax  int    `json:"protocolMax"`
-		LegacyCompat bool   `json:"legacyCompat"`
+		ProtocolID  string `json:"protocolId"`
+		Version     int    `json:"v"`
+		ModVersion  string `json:"modVersion"`
+		ProtocolMin int    `json:"protocolMin"`
+		ProtocolMax int    `json:"protocolMax"`
 	}
 	if json.Unmarshal(data, &h) != nil || h.Version <= 0 {
 		return telemetryEnvelope{}, false
@@ -43,7 +41,7 @@ func inspectTelemetryEnvelope(data []byte) (telemetryEnvelope, bool) {
 	if h.ProtocolID != "" && h.ProtocolID != protocolID {
 		return telemetryEnvelope{}, false
 	}
-	return telemetryEnvelope{Project: true, Version: h.Version, ModVersion: h.ModVersion, ProtocolMin: h.ProtocolMin, ProtocolMax: h.ProtocolMax, LegacyCompat: h.LegacyCompat}, true
+	return telemetryEnvelope{Project: true, Version: h.Version, ModVersion: h.ModVersion, ProtocolMin: h.ProtocolMin, ProtocolMax: h.ProtocolMax}, true
 }
 
 func (g *protocolCompatibilityGuard) handlePacket(data []byte, diagnostics bool, requestStop func()) bool {
@@ -51,10 +49,6 @@ func (g *protocolCompatibilityGuard) handlePacket(data []byte, diagnostics bool,
 	if !ok || !env.Project {
 		return false
 	}
-	if env.LegacyCompat {
-		return true
-	}
-
 	if !gameplayProtocolSupported(env.Version) {
 		g.unsupportedOnce.Do(func() {
 			_ = writePendingCompatibilityRequest(env)
@@ -77,7 +71,7 @@ func (g *protocolCompatibilityGuard) handlePacket(data []byte, diagnostics bool,
 			_ = writePendingCompatibilityRequest(env)
 			fmt.Println()
 			fmt.Println("============================================================")
-			fmt.Println("ONE-TIME UPDATE MIGRATION")
+			fmt.Println("BEAMNG MOD UPDATE")
 			fmt.Println("============================================================")
 			fmt.Println("1. Close this Bridge window.")
 			fmt.Println("2. Run UPDATE_DUALSENSE.exe from the Bridge folder.")
@@ -85,7 +79,7 @@ func (g *protocolCompatibilityGuard) handlePacket(data []byte, diagnostics bool,
 			fmt.Println("4. Confirm the update in UPDATE_DUALSENSE.exe.")
 			fmt.Println("5. Follow the installation tutorial that opens after the update.")
 			fmt.Println()
-			fmt.Println("You can also open IMPORTANT_GUIDE_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt for these steps.")
+
 		})
 		return false
 	}

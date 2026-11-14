@@ -40,6 +40,10 @@ def verify_zip(zip_path: Path) -> None:
 def verify_bridge(repo: Path, path: Path) -> None:
     verify_zip(path)
     with zipfile.ZipFile(path) as archive:
+        # The published V1.43 updater rejects packages missing UPDATE_BRIDGE.exe.
+        # It must be an alias of the *current* updater, not old migration code.
+        if archive.read("UPDATE_BRIDGE.exe") != archive.read("UPDATE_DUALSENSE.exe"):
+            raise ValueError("V1.43 updater compatibility alias is missing or differs from the unified updater")
         manifest = manifest_entries(archive.read("SHA256SUMS.txt"))
         if set(manifest) != set(archive.namelist()) - {"SHA256SUMS.txt"}:
             raise ValueError("Bridge manifest and file list differ")

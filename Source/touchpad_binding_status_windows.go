@@ -73,7 +73,11 @@ func updateTouchpadBindingPolicy(bound, capture bool, policy int32, suppressTwoT
 	oldMouseForced := touchpadBindingState.mouseForced.Swap(mouseForced)
 	oldSuppress := touchpadBindingState.suppressTwoTapMouse.Swap(suppressTwoTapMouse)
 	touchpadBindingState.lastSeen.Store(time.Now().UnixNano())
-	if oldBound == bound && oldCapture == capture && oldMouseForced == mouseForced && oldSuppress == suppressTwoTapMouse && oldPolicy == policy {
+	// This is high-frequency internal state, not a public connection status.
+	// Keep detailed ownership transitions in explicit diagnostics only; the
+	// normal V1.43-style console stays focused on controller and BeamNG status.
+	if !touchpadBindingDiagnosticsEnabled() ||
+		(oldBound == bound && oldCapture == capture && oldMouseForced == mouseForced && oldSuppress == suppressTwoTapMouse && oldPolicy == policy) {
 		return
 	}
 	owner := "automatic mouse fallback"
@@ -107,7 +111,9 @@ func startTouchpadBindingStatusReceiver(done <-chan struct{}) {
 	}
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		fmt.Printf("Touchpad status receiver could not bind %s: %v\n", touchpadBindingStatusAddress, err)
+		if touchpadBindingDiagnosticsEnabled() {
+			fmt.Printf("Touchpad diagnostic receiver error: %v\n", err)
+		}
 		return
 	}
 	go func() {

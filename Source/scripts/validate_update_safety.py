@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Minimal update-safety validation for CI.
+"""Check version and compatibility metadata before distributing an update.
 
-This script intentionally checks only metadata that can make an update unsafe or
-unusable. Documentation, wording, optional compatibility notes and unrelated
-project files are never allowed to fail the build.
-
-Warnings are printed for non-critical issues and always return success.
+The CI generates BRIDGE_COMPATIBILITY.json from the source version before this
+validation. No older migration paths are allowed to re-enter the release.
 """
 from __future__ import annotations
 
@@ -17,8 +14,6 @@ from pathlib import Path
 
 BUILDINFO = Path("Source/internal/buildinfo/buildinfo.go")
 COMPATIBILITY = Path("BRIDGE_COMPATIBILITY.json")
-MODEL = Path("Source/internal/compatibility/model.go")
-GENERIC_GUIDE = Path("IMPORTANT_GUIDE_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt")
 
 VERSION_RE = re.compile(r"^[Vv]?(\d+)\.(\d+)(?:\.(\d+))?$")
 
@@ -41,10 +36,6 @@ def read_build_versions(repo: Path) -> tuple[str, str]:
     return numeric.group(1).strip(), display.group(1).strip()
 
 
-def warn(warnings: list[str], message: str) -> None:
-    warnings.append(message)
-
-
 def error(errors: list[str], message: str) -> None:
     errors.append(message)
 
@@ -56,7 +47,6 @@ def main() -> int:
     repo = Path(args.repo_root).resolve()
 
     errors: list[str] = []
-    warnings: list[str] = []
 
     # CRITICAL: the build must have a valid, internally consistent version.
     try:
@@ -74,8 +64,7 @@ def main() -> int:
     if numeric_parts is not None and display_parts is not None and numeric_parts[:2] != display_parts[:2]:
         error(errors, f"Version {numeric_version} and DisplayVersion {display_version} do not describe the same release")
 
-    # CRITICAL: the compatibility index is update-routing data. Invalid JSON or
-    # a missing/mismatched current entry can route legacy users to the wrong file.
+    # The index is published alongside the matching build; reject stale data.
     compat_path = repo / COMPATIBILITY
     try:
         compat = json.loads(compat_path.read_text(encoding="utf-8"))
@@ -142,34 +131,21 @@ def main() -> int:
             if max_parts is not None and display_parts > max_parts:
                 error(errors, f"current release {display_version} is above its own modMax {mod_max}")
 
-    # CRITICAL: legacy code may fall back to DefaultReleaseAsset. A stale name can
-    # make a valid release impossible to download.
-    model_path = repo / MODEL
-    try:
-        model_text = model_path.read_text(encoding="utf-8")
-        match = re.search(r'DefaultReleaseAsset\s*=\s*"([^"]+)"', model_text)
-        if not match:
-            error(errors, f"unable to find DefaultReleaseAsset in {MODEL}")
-        elif match.group(1) != expected_asset:
-            error(errors, f"DefaultReleaseAsset must be {expected_asset}, found {match.group(1)}")
-    except Exception as exc:
-        error(errors, f"unable to read {MODEL}: {exc}")
-
-    # NON-BLOCKING: the updater prints migration instructions itself, so this file
-    # is useful but not required for a technically safe update.
-    if not (repo / GENERIC_GUIDE).is_file():
-        warn(warnings, f"optional migration guide is missing: {GENERIC_GUIDE}")
-
-    # NON-BLOCKING: stale versioned guide names are maintenance clutter, but they
-    # must never prevent a build or update from shipping.
-    stale_guides = [p.relative_to(repo).as_posix() for p in repo.rglob("IMPORTANT_V*") if p.is_file()]
-    if stale_guides:
-        warn(warnings, "versioned migration-guide files found: " + ", ".join(stale_guides))
-
-    if warnings:
-        print("[update-safety] WARNINGS (non-blocking):")
-        for message in warnings:
-            print(f" - {message}")
+    # Only the unified V1.43+ release line is supported. Protocol 41/42
+    # migration entries must not reappear in an automatically generated index.
+    if isinstance(compat, dict):
+        generations = compat.get("protocols")
+        if not isinstance(generations, list) or [g.get("id") for g in generations if isinstance(g, dict)] != [43]:
+            error(errors, "only gameplay protocol 43 is supported in the current release")
+        if len(releases) != 1:
+            error(errors, "compatibility metadata must declare only the current stable release")
+    if current_entry is not None:
+        if current_entry.get("protocols") != [43]:
+            error(errors, "current release must advertise only protocol 43")
+        if str(current_entry.get("modMin", "")).strip() != "V1.43":
+            error(errors, "supported update floor must remain V1.43")
+        if str(current_entry.get("modMax", "")).strip() != display_version:
+            error(errors, "modMax must match this build")
 
     if errors:
         print("[update-safety] FAILED", file=sys.stderr)

@@ -5,7 +5,7 @@ $bridge = Join-Path $repository 'Bridge'
 $startBridge = Join-Path $repository 'START_BRIDGE.exe'
 $startBridgeAndBeamNG = Join-Path $repository 'START_BRIDGE_AND_BEAMNG.exe'
 $updateDualSense = Join-Path $repository 'UPDATE_DUALSENSE.exe'
-$updateBridge = Join-Path $repository 'UPDATE_BRIDGE.exe'
+$compatibilityAlias = Join-Path $repository 'UPDATE_BRIDGE.exe'
 
 New-Item -ItemType Directory -Force -Path $bridge | Out-Null
 
@@ -23,7 +23,8 @@ try {
     go build -trimpath -buildvcs=false -ldflags '-s -w -buildid=' -o $startBridge ./launcher
     Copy-Item -LiteralPath $startBridge -Destination $startBridgeAndBeamNG -Force
     go build -trimpath -buildvcs=false -ldflags '-s -w -buildid=' -o $updateDualSense ./updater
-    Copy-Item -LiteralPath $updateDualSense -Destination $updateBridge -Force
+    # V1.43 updater verifies this filename in the downloaded ZIP.
+    Copy-Item -LiteralPath $updateDualSense -Destination $compatibilityAlias -Force
 
     $buildInfo = Get-Content -LiteralPath (Join-Path $source 'internal\buildinfo\buildinfo.go') -Raw
     if ($buildInfo -notmatch 'DisplayVersion\s*=\s*"([^"]+)"') { throw 'Unable to read DisplayVersion from buildinfo.go' }

@@ -133,7 +133,6 @@ type telemetry struct {
 	ModVersion     string                 `json:"modVersion"`
 	ProtocolMin    int                    `json:"protocolMin"`
 	ProtocolMax    int                    `json:"protocolMax"`
-	LegacyCompat   bool                   `json:"legacyCompat"`
 	Active         bool                   `json:"active"`
 	Seq            int                    `json:"seq"`
 	ShiftLEDsInUse bool                   `json:"shiftLEDsInUse"` // legacy compatibility hint; current RPM lighting ignores it
@@ -197,20 +196,10 @@ func decodeTelemetry(data []byte) (telemetry, bool) {
 		return telemetry{}, false
 	}
 
-	switch t.Version {
-	case 41:
-		// Protocol 41 is retained for the supported V1.3 migration floor.
-		normalizeSemanticTriggerEffects(&t)
-	case 42:
-		// Protocol 42 is retained for V1.4-era migration.
-		normalizeSemanticTriggerEffects(&t)
-	case 43:
-		// V1.41 migration generation. The wire payload remains semantic; from
-		// this release onward user-facing compatibility is release-version based.
-		normalizeSemanticTriggerEffects(&t)
-	default:
+	if !gameplayProtocolSupported(t.Version) {
 		return telemetry{}, false
 	}
+	normalizeSemanticTriggerEffects(&t)
 
 	if t.UserSettings != nil {
 		applyBeamNGUserSettings(*t.UserSettings)
@@ -286,12 +275,11 @@ func normalizeSemanticTriggerEffects(t *telemetry) {
 }
 
 type telemetryHeader struct {
-	Version      int    `json:"v"`
-	ProtocolID   string `json:"protocolId"`
-	ModVersion   string `json:"modVersion"`
-	ProtocolMin  int    `json:"protocolMin"`
-	ProtocolMax  int    `json:"protocolMax"`
-	LegacyCompat bool   `json:"legacyCompat"`
+	Version     int    `json:"v"`
+	ProtocolID  string `json:"protocolId"`
+	ModVersion  string `json:"modVersion"`
+	ProtocolMin int    `json:"protocolMin"`
+	ProtocolMax int    `json:"protocolMax"`
 }
 
 func inspectTelemetryHeader(data []byte) (telemetryHeader, bool) {
@@ -307,7 +295,7 @@ func inspectTelemetryHeader(data []byte) (telemetryHeader, bool) {
 
 func telemetryCompatibilityError(data []byte) string {
 	h, ok := inspectTelemetryHeader(data)
-	if !ok || h.LegacyCompat || gameplayProtocolSupported(h.Version) {
+	if !ok || gameplayProtocolSupported(h.Version) {
 		return ""
 	}
 	mod := h.ModVersion

@@ -2,7 +2,7 @@ package main
 
 const (
 	protocolVersion    = 43
-	protocolMinVersion = 41
+	protocolMinVersion = 43
 	protocolMaxVersion = 43
 	protocolID         = "DPH"
 )

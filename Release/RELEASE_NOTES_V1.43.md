@@ -1,3 +1,5 @@
+> Historical V1.43 release notes. Earlier update paths have been removed from the V1.50 build.
+
 # Enhanced PS5 DualSense Haptics — V1.43
 
 ## Changes since V1.42

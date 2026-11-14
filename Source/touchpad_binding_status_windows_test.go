@@ -3,6 +3,9 @@
 package main
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -81,5 +84,54 @@ func TestTouchpadMouseExplicitPolicyAndBindingPriority(t *testing.T) {
 	updateTouchpadBindingPolicy(true, true, 1, false)
 	if touchpadMouseAllowed() {
 		t.Fatal("binding editor capture must override mouse ON")
+	}
+}
+
+// The ordinary Bridge window should display controller and BeamNG connection
+// messages, never technical touchpad ownership changes.
+func TestTouchpadStateTransitionsStayOutOfPublicConsole(t *testing.T) {
+	setTouchpadBindingDiagnosticsEnabled(false)
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdout
+	os.Stdout = writer
+	updateTouchpadBindingPolicy(false, false, 1, false)
+	updateTouchpadBindingPolicy(true, false, 1, false)
+	updateTouchpadBindingPolicy(true, false, 2, false)
+	updateTouchpadBindingPolicy(true, true, 2, false)
+	_ = writer.Close()
+	os.Stdout = previous
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) > 0 {
+		t.Fatalf("public console leaked internal touchpad state: %s", data)
+	}
+}
+
+func TestTouchpadTransitionsRemainAvailableInExplicitDiagnostics(t *testing.T) {
+	setTouchpadBindingDiagnosticsEnabled(true)
+	defer setTouchpadBindingDiagnosticsEnabled(false)
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdout
+	os.Stdout = writer
+	updateTouchpadBindingPolicy(false, false, 1, false)
+	updateTouchpadBindingPolicy(true, false, 2, false)
+	_ = writer.Close()
+	os.Stdout = previous
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Touchpad ownership:") {
+		t.Fatalf("explicit diagnostic lost touchpad details: %q", data)
 	}
 }

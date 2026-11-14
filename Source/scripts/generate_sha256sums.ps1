@@ -11,12 +11,11 @@ $ManagedRootFiles = @(
     'START_BRIDGE.exe',
     'START_BRIDGE_AND_BEAMNG.exe',
     'UPDATE_DUALSENSE.exe',
-    'UPDATE_BRIDGE.exe',
+    'UPDATE_BRIDGE.exe', # byte-identical compatibility alias required by V1.43 updater
     'README.md',
     'LICENSE',
     'THIRD_PARTY_NOTICES.md',
-    'BRIDGE_COMPATIBILITY.json',
-    'IMPORTANT_GUIDE_-_RUN_UPDATE_DUALSENSE_TO_FINISH_UPDATE.txt'
+    'BRIDGE_COMPATIBILITY.json'
 )
 $ManagedDirectories = @('Bridge', 'Config', 'Diagnostics')
 

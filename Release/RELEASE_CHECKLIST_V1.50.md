@@ -3,7 +3,7 @@
 ## Source and automated verification
 
 - [x] Source tree based on the latest R2 Jolt / Wheelspin and touchpad fixes; isolated issue #1 steering end-stop and issue #2 activation lifecycle corrections, with no unrelated gameplay refactor.
-- [x] Build and source version `1.50.0`, display `V1.50`, protocol 43, compatibility index current.
+- [x] Build and source version `1.50.0`, display `V1.50`, protocol 43 only, compatibility metadata generated automatically from buildinfo.
 - [x] Diagnostic script prints V1.50 rather than V1.42; architecture/protocol documents updated.
 - [x] Deterministic ZIP builder and checksum validator added to `Source/scripts`.
 - [x] Source builds of USB, Bluetooth, launcher and updater reproduced byte-for-byte with Go 1.23.2.
@@ -35,3 +35,11 @@ The updater never installs the BeamNG mod automatically. It stages the matching 
 Backup custom edits to the Bridge-provided `Config/feel_profile_v1.json` before updating;
 the V1.43 updater treats that file as managed and may replace it.
 No code changes were pushed or releases published by this preparation.
+
+## Nettoyage V1.43+
+
+- [x] L'updater `UPDATE_DUALSENSE.exe` continue de gérer V1.43+ et les releases futures.
+- [x] Suppression de l’ancienne implémentation de `UPDATE_BRIDGE.exe`, du guide de migration et des chemins V1.42 et antérieurs. Le fichier `UPDATE_BRIDGE.exe` reste en alias identique de l’updater actuel pour permettre V1.43 → V1.50.
+- [x] Retrait des protocoles 41/42 dans l'index et le décodeur.
+- [x] Console utilisateur sans messages internes de propriété du touchpad (diagnostic seulement).
+- [x] Génération automatique du JSON depuis la version compilée et sa copie dans l'artefact CI.
