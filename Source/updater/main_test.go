@@ -24,6 +24,23 @@ func TestV143UpdaterSelectsCompleteV150Release(t *testing.T) {
 	}
 }
 
+func TestV143AndV150UpdatersSelectV151StableRelease(t *testing.T) {
+	releases := []githubRelease{
+		testRelease("V1.43", true),
+		testRelease("V1.50", true),
+		testRelease("V1.51", true),
+		testRelease("V1.52", false), // A newer release without both assets is never offered.
+	}
+	for _, installed := range []string{"V1.43", "V1.50"} {
+		selected, ok := selectUnifiedProjectRelease(releases, installed)
+		if !ok || selected.Version != "V1.51" ||
+			selected.ModAsset.Name != "Enhanced_PS5_DualSense_Haptics_V1.51.zip" ||
+			selected.BridgeAsset.Name != "Enhanced_PS5_DualSense_Haptics_Bridge_V1.51.zip" {
+			t.Fatalf("update from %s did not select the complete V1.51 release: %+v ok=%t", installed, selected, ok)
+		}
+	}
+}
+
 func TestReleaseSelectionRejectsIncompletePreviewAndDowngrade(t *testing.T) {
 	preview := testRelease("V1.52", true)
 	preview.Prerelease = true
@@ -151,7 +168,7 @@ func TestBridgeRuntimeRequiresOnlyUnifiedUpdater(t *testing.T) {
 	if err := writeManifest(filepath.Join(root, manifestName), manifest); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyBridgeRuntimePackage(root, "V1.50"); err != nil {
+	if err := verifyBridgeRuntimePackage(root, "V1.51"); err != nil {
 		t.Fatalf("current Bridge rejected without obsolete updater: %v", err)
 	}
 }

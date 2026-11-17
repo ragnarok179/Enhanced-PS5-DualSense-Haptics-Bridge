@@ -31,8 +31,8 @@ class ModIdentityTests(unittest.TestCase):
         # BeamNG's getModNameFromPath() normalizes ZIP filenames independently
         # of the folder in mod_info. Appending (7) must not break UI actions.
         for filename in (
-            "Enhanced_PS5_DualSense_Haptics_V1.50.zip",
-            "Enhanced_PS5_DualSense_Haptics_V1.50 (7).zip",
+            "Enhanced_PS5_DualSense_Haptics_V1.51.zip",
+            "Enhanced_PS5_DualSense_Haptics_V1.51 (7).zip",
         ):
             internal_name = filename[:-4].lower()
             self.assertNotEqual(internal_name, ui_mod_id)

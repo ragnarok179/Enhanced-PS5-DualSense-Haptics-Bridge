@@ -31,10 +31,12 @@ type extendedInputWireState struct {
 	EdgeDevice bool
 	Bluetooth  bool
 	TouchMode  byte
-	Seq        byte
-	Count      byte
-	ID1        byte
-	ID2        byte
+	// Two spare DSE4 flag bits carry missed background transitions without changing the packet size.
+	FocusLossGeneration byte
+	Seq                 byte
+	Count               byte
+	ID1                 byte
+	ID2                 byte
 
 	X1, Y1 uint16
 	X2, Y2 uint16
@@ -150,6 +152,7 @@ func encodeExtendedInputPacket(s extendedInputWireState, dst []byte) ([]byte, er
 		touchFlags |= 1 << 3
 	}
 	touchFlags |= (s.TouchMode & 0x03) << 4
+	touchFlags |= (s.FocusLossGeneration & 0x03) << 6
 	p[7] = touchFlags
 	p[8] = s.Seq
 	p[9] = s.Count
@@ -185,7 +188,7 @@ func decodeExtendedInputPacket(p []byte) (extendedInputWireState, error) {
 		EdgeLeft: buttons&(1<<5) != 0, EdgeRight: buttons&(1<<6) != 0,
 		OneTap: gestures&(1<<0) != 0, TwoTap: gestures&(1<<1) != 0,
 		Touch1: flags&(1<<0) != 0, Touch2: flags&(1<<1) != 0,
-		EdgeDevice: flags&(1<<2) != 0, Bluetooth: flags&(1<<3) != 0, TouchMode: (flags >> 4) & 0x03,
+		EdgeDevice: flags&(1<<2) != 0, Bluetooth: flags&(1<<3) != 0, TouchMode: (flags >> 4) & 0x03, FocusLossGeneration: (flags >> 6) & 0x03,
 		Seq: p[8], Count: p[9], ID1: p[10], ID2: p[11],
 		X1: binary.LittleEndian.Uint16(p[12:14]), Y1: binary.LittleEndian.Uint16(p[14:16]),
 		X2: binary.LittleEndian.Uint16(p[16:18]), Y2: binary.LittleEndian.Uint16(p[18:20]),
@@ -201,7 +204,8 @@ func extendedButtonsChanged(a, b extendedInputWireState) bool {
 		a.EdgeLeft != b.EdgeLeft || a.EdgeRight != b.EdgeRight ||
 		a.OneTap != b.OneTap || a.TwoTap != b.TwoTap ||
 		a.Touch1 != b.Touch1 || a.Touch2 != b.Touch2 || a.Count != b.Count ||
-		a.ID1 != b.ID1 || a.ID2 != b.ID2 || a.EdgeDevice != b.EdgeDevice || a.TouchMode != b.TouchMode
+		a.ID1 != b.ID1 || a.ID2 != b.ID2 || a.EdgeDevice != b.EdgeDevice || a.TouchMode != b.TouchMode ||
+		a.FocusLossGeneration != b.FocusLossGeneration
 }
 
 func extendedTouchChanged(a, b extendedInputWireState) bool {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and package a verified V1.50 Windows Bridge and BeamNG mod.
+"""Build and package a verified V1.51 Windows Bridge and BeamNG mod.
 
 Uses only the Python standard library and the selected Go toolchain.
 The same deterministic ZIP builder is used for the Bridge, mod and bundle.

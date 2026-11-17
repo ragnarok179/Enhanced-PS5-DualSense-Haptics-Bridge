@@ -79,13 +79,13 @@ jobs:
       - name: Upload verified release candidates
         uses: actions/upload-artifact@v4
         with:
-          name: v150-release-candidate
+          name: v151-release-candidate
           if-no-files-found: error
           retention-days: 30
           path: |
-            Release/Enhanced_PS5_DualSense_Haptics_V1.50.zip
-            Release/Enhanced_PS5_DualSense_Haptics_Bridge_V1.50.zip
-            Release/Enhanced_PS5_DualSense_Haptics_V1.50_INSTALLATION_BUNDLE.zip
+            Release/Enhanced_PS5_DualSense_Haptics_V1.51.zip
+            Release/Enhanced_PS5_DualSense_Haptics_Bridge_V1.51.zip
+            Release/Enhanced_PS5_DualSense_Haptics_V1.51_INSTALLATION_BUNDLE.zip
             Release/RELEASE_SHA256SUMS.txt
             Release/BUILD_PROVENANCE.txt
             Release/BRIDGE_COMPATIBILITY.json

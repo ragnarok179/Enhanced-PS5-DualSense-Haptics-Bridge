@@ -12,6 +12,7 @@ getPlayerVehicle = function() return vehicle end
 core_input_actions = {getActiveActions = function() return {
   toggleDiffMode={ctx="vlua", onDown="powertrain.toggleDefaultDiffs()"},
   toggle4WDStatus={ctx="vlua", onDown="controller.toggle4WD()"},
+  customUnobservedToggle={ctx="vlua", onDown="controller.toggleUnknown()"},
   parkingbrake={ctx="vlua", onChange="input.event('parkingbrake', VALUE, FILTERTYPE)"},
 } end}
 local bindings = {{control="button2",action="toggleDiffMode",player=0}}
@@ -32,7 +33,6 @@ eq(sync.pulsedButton(),true,"known onDown action uses pulses")
 eq(sample(0.30,false),nil,"initial vehicle state requires a second observation")
 eq(sample(0.50,true),nil,"changed startup sample starts new confirmation")
 eq(sample(0.70,true),true,"stable new vehicle state confirmed")
-eq(sync.active(),true,"confirmed state available")
 -- Drive-side changes are confirmed, not guessed from one transient sample.
 eq(sample(1.00,false),nil,"external change first observation")
 eq(sample(1.20,false),false,"external change confirmed")
@@ -51,7 +51,6 @@ eq(sample(2.95,true),true,"still-confirmed old state reported after rejection")
 -- Switched vehicle (new ID) discards old responses and initial observations.
 vehicle.id=202
 sync.update(3.20,7,true)
-eq(sync.active(),false,"switch invalidates confirmation")
 eq(sync.accept(3.21,101,stale,"diff",true),nil,"old vehicle response ignored")
 eq(sample(3.50,false),nil,"new vehicle first sample")
 eq(sample(3.70,false),false,"new vehicle confirmed")
@@ -68,15 +67,21 @@ sync.invalidate()
 sync.update(5.00,7,true)
 eq(sample(5.30,nil),nil,"unknown reader")
 eq(sync.pulsedButton(),true,"recognized toggle still uses physical pulses")
-eq(sync.active(),false,"unknown reader has no confirmed state")
 -- Multiple bindings are ambiguous; unsafe parkingbrake axis is never claimed.
+local oldSent = #sent
 bindings[2]={control="button2",action="toggle4WDStatus",player=0}
 sync.invalidate();sync.update(5.50,7,true)
 eq(sync.pulsedButton(),false,"multiple actions not synchronized")
-eq(sync.waitingForState(),false,"multiple actions use manual toggle")
+eq(#sent,oldSent,"multiple actions never request a vehicle probe")
 core_input_bindings.bindings[1].contents.bindings={{control="axis10",action="parkingbrake",player=0}}
 sync.invalidate();sync.update(5.70,7,true)
-eq(sync.waitingForState(),false,"non-idempotent axis not synchronized")
+eq(#sent,oldSent,"non-idempotent axis never requests a vehicle probe")
+-- A genuine custom toggle with an unknown state reader must still receive only
+-- physical press edges; switching vehicles must not generate an extra onDown.
+core_input_bindings.bindings[1].contents.bindings={{control="button2",action="customUnobservedToggle",player=0}}
+sync.invalidate();sync.update(5.95,7,true)
+eq(sync.pulsedButton(),true,"custom onDown toggle uses button pulses")
+eq(#sent,oldSent,"custom toggle does not invent a reader")
 -- Vehicle reader queries only physical state; never operates the vehicle.
 local emitted={}
 obj={getID=function()return 202 end,queueGameEngineLua=function(_,code)emitted[#emitted+1]=code end}

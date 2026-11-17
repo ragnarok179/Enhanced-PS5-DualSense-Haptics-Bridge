@@ -116,6 +116,7 @@ func startTouchpadBindingStatusReceiver(done <-chan struct{}) {
 		}
 		return
 	}
+	startMicMuteGameProcessMonitor(done)
 	go func() {
 		defer conn.Close()
 		buf := make([]byte, 4096)
@@ -131,8 +132,8 @@ func startTouchpadBindingStatusReceiver(done <-chan struct{}) {
 			if err != nil {
 				continue
 			}
-			if n == 7 && string(buf[:4]) == "DMB1" && buf[4] == 1 && buf[5] <= 1 && buf[6] <= 1 {
-				updateMicMuteLED(buf[5] == 1, buf[6] == 1)
+			if handleMicMuteStatusPacket(buf[:n]) {
+				// Mic Mute status parsed by the shared, versioned decoder.
 			} else if n >= 9 && string(buf[:4]) == "DSM2" && buf[4] == 3 {
 				updateTouchpadBindingPolicy(buf[5] != 0, buf[6] != 0, int32(buf[7]), buf[8] != 0)
 			} else if n >= 9 && string(buf[:4]) == "DSM2" && buf[4] == 2 {

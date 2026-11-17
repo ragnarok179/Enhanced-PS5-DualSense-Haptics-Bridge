@@ -1,3 +1,11 @@
+## Mic Mute Alt+Tab resynchronization + BeamNG-style settings (rebuild candidate)
+
+- Corrected an inconsistency in the previous focus-preservation fix: BeamNG may release the mapped in-game action on Alt+Tab while the DualSense still displays an orange LED.
+- The Bridge now observes Windows foreground transitions and clears the uncertain LED. A two-bit focus-loss generation is carried in spare DSE4 flags (same protocol version and packet length), allowing Lua to recognize a missed Alt+Tab after the game resumes.
+- Lua releases its optimistic Mic latch without issuing a new toggle or writing a synthetic Set Mode axis. Supported, uniquely identified vehicle actions are then read back and reflected in the LED. Custom/unknown bindings cannot be observed and conservatively fall back to an unlit LED. This is a safety/consistency policy, not a guarantee that arbitrary game actions are reversible.
+- Optimized Haptics/Inputs/Speaker layout to better match BeamNG settings: smaller consistent typography, compact grouping, native BngSlider, keyboard-navigable tabs, accessible focus indications, parent-aware disabled controls, and clear trigger range labels.
+- Requires the updated **mod and Bridge together**; release number remains V1.50. Hardware verification in BeamNG with a DualSense, over USB and Bluetooth, is still required.
+
 # V1.50 — Touchpad ownership, Mic Mute responsiveness and gyro steering
 
 - **Gyro steering end stops (issue #1):** Rotation Angle no longer changes steering direction when the controller crosses ±180°. Rotation is accumulated continuously per Motion input and clamped to the configured per-side steering range. Returning from beyond the stop releases it smoothly, without recentering. Auto-calibration, recenter and stream reconnection reset the history; legacy stored settings and normal gyro/tilt/orientation modes are unchanged.
@@ -6,7 +14,7 @@
 - **Touchpad:** The Mouse On/Off UI control and BeamNG shortcut now switch between Windows mouse and existing BeamNG touchpad bindings without deleting bindings. Explicit Mouse On wins over a saved binding; the binding editor temporarily wins over mouse so you can still create new bindings.
 - **Mic Mute:** The Bridge reacts to the physical Mic Mute press immediately in Toggle mode, before the next in-game state packet. Late pre-press packets are ignored briefly; the actual vehicle state can still correct the indicator.
 - **Feedback mode removed:** The entire Inputs only option and its custom runtime branching have been removed from the settings UI, Lua and Bridge. Individual haptics, triggers, lighting and speaker settings remain.
-- Trigger start/end dual sliders and their resistance settings remain unchanged, including the increased spacing.
+- Trigger start/end dual sliders retain their two-thumb behavior; the settings layout now uses more compact spacing and parent-aware disabled states.
 - **Mic Mute lifecycle:** A new read-only observation follows vehicle switching, vehicle replacement (including reused IDs), Ctrl+R/reset/repair and level changes. The LED uses two consistent observations to reject transient states; no virtual action is sent merely for synchronization. Unsupported actions still use manual Toggle.
 - Version and telemetry protocol remain **V1.50** / protocol 43. Replace both the mod ZIP and the Bridge files manually; the updater does not distinguish revisions sharing the same version number.
 

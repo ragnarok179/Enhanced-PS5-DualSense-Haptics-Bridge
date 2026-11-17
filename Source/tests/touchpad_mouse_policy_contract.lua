@@ -1,4 +1,4 @@
--- Regression contract: current V1.50 BeamNG mouse UI/hotkey/bindings.
+-- Regression contract: current V1.51 BeamNG mouse UI/hotkey/bindings.
 local saved = {}
 local sent = {}
 package.preload['dualsenseSuite/settingsStore'] = function() return {

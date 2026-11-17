@@ -19,15 +19,15 @@ class CompatibilityGenerationTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.repo = Path(self.tmp.name)
         (self.repo / "Source/internal/buildinfo").mkdir(parents=True)
-        (self.repo / "Source/internal/buildinfo/buildinfo.go").write_text('package buildinfo\nconst DisplayVersion = "V1.50"\n')
+        (self.repo / "Source/internal/buildinfo/buildinfo.go").write_text('package buildinfo\nconst DisplayVersion = "V1.51"\n')
         (self.repo / "Source/protocol.go").write_text('const (\nprotocolVersion = 43\nprotocolMinVersion = 43\nprotocolMaxVersion = 43\n)\n')
 
     def test_current_index_is_V143_or_later_only(self):
         data = generator.generate(self.repo)
         self.assertEqual([p["id"] for p in data["protocols"]], [43])
         self.assertEqual(data["releases"][0]["modMin"], "V1.43")
-        self.assertEqual(data["releases"][0]["bridgeVersion"], "V1.50")
-        self.assertEqual(data["releases"][0]["asset"], "Enhanced_PS5_DualSense_Haptics_Bridge_V1.50.zip")
+        self.assertEqual(data["releases"][0]["bridgeVersion"], "V1.51")
+        self.assertEqual(data["releases"][0]["asset"], "Enhanced_PS5_DualSense_Haptics_Bridge_V1.51.zip")
 
     def test_next_build_auto_updates_tag_and_asset(self):
         (self.repo / "Source/internal/buildinfo/buildinfo.go").write_text('package buildinfo\nconst DisplayVersion = "V1.51"\n')

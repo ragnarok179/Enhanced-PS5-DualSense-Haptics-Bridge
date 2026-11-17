@@ -16,8 +16,8 @@ local supportedActions = {
 }
 
 local state = {
-  target = nil, control = nil, action = nil,
-  vehicleId = nil, deviceInstance = nil, dirty = true, confirmed = false, unavailable = false,
+  target = nil, control = nil,
+  vehicleId = nil, deviceInstance = nil, dirty = true, confirmed = false,
   sequence = 0, pending = nil, nextPollAt = 0,
   lastPressAt = -100, expectedAfterPress = nil, pressGuardUntil = 0,
   confirmedValue = nil, candidateValue = nil, candidateAt = nil,
@@ -31,40 +31,50 @@ end
 
 local function matchingBinding(instance)
   if instance == nil or not core_input_bindings or type(core_input_bindings.bindings) ~= "table" then return nil end
-  local actions = core_input_actions and core_input_actions.getActiveActions and core_input_actions.getActiveActions()
-  if type(actions) ~= "table" then return nil end
   local expectedName = "vinput" .. tostring(instance)
-  local match, count = nil, 0
+  local selected = nil
   for _, device in ipairs(core_input_bindings.bindings) do
     if device.devname == expectedName and type(device.contents) == "table" then
       for _, binding in ipairs(device.contents.bindings or {}) do
         local control = type(binding.control) == "string" and binding.control:match("([^%s]+)$") or nil
         if (control == "button2" or control == "axis10") and not binding.unused and
             (binding.player == nil or tonumber(binding.player) == 0) then
-          -- Ambiguous/multiple actions must never control a single LED.
-          count = count + 1
-          local action = actions[binding.action]
-          local target = supportedActions[binding.action]
-          local valid = target and type(action) == "table" and
-            ((control == "button2" and type(action.onDown) == "string" and
-              type(action.onUp) ~= "string" and type(action.onChange) ~= "string") or
-             (control == "axis10" and type(action.onChange) == "string")) and
-            (action.ctx == "vlua" or action.ctx == nil) and
-            action.cat ~= "vehicle_specific_unusable"
-          if valid then
-            match = {target = target, action = binding.action, control = control}
-          end
+          -- Two candidate bindings are ambiguous regardless of their actions.
+          -- Neither a state probe nor an automatic button pulse is safe.
+          if selected then return nil end
+          selected = {control = control, action = binding.action}
         end
       end
     end
   end
-  return count == 1 and match or nil
+  if not selected or type(selected.action) ~= "string" then return nil end
+
+  -- Reading the complete action catalogue is unnecessary for unbound or
+  -- ambiguous devices; resolve it only for the unique candidate.
+  local getActiveActions = core_input_actions and core_input_actions.getActiveActions
+  if type(getActiveActions) ~= "function" then return nil end
+  local actions = getActiveActions()
+  if type(actions) ~= "table" then return nil end
+  local action = actions[selected.action]
+  local target = supportedActions[selected.action]
+  local validContext = type(action) == "table" and
+    (action.ctx == "vlua" or action.ctx == nil) and action.cat ~= "vehicle_specific_unusable"
+  -- Unknown onDown toggles still need physical button pulses; known vehicle
+  -- actions can additionally be observed by the read-only vehicle probe.
+  local pulse = validContext and selected.control == "button2" and
+    type(action.onDown) == "string" and
+    type(action.onUp) ~= "string" and type(action.onChange) ~= "string"
+  local readableAxis = validContext and target and selected.control == "axis10" and
+    type(action.onChange) == "string"
+  if pulse or readableAxis then
+    return {target = target, control = selected.control}
+  end
+  return nil
 end
 
 function M.invalidate()
   state.dirty = true
   state.confirmed = false
-  state.unavailable = false
   state.pending = nil
   state.confirmedValue, state.candidateValue, state.candidateAt = nil, nil, nil
   state.sequence = state.sequence + 1
@@ -74,13 +84,12 @@ function M.invalidate()
 end
 
 function M.reset()
-  state.target, state.control, state.action = nil, nil, nil
+  state.target, state.control = nil, nil
   state.vehicleId, state.deviceInstance = nil, nil
   state.lastPressAt = -100
   M.invalidate()
 end
 
-function M.active() return state.confirmed end
 -- While the first observation is pending, also use short button pulses: an
 -- old held state must not toggle the freshly loaded vehicle before we read it.
 -- If the vehicle cannot expose the state, restore the original manual latch.
@@ -88,10 +97,7 @@ function M.pulsedButton()
   -- Keep true for recognized onDown actions even when a state probe fails.
   -- Re-latching a held button after a timeout would synthesize an unwanted
   -- second onDown event and toggle the in-game function back.
-  return state.target ~= nil and state.control == "button2"
-end
-function M.waitingForState()
-  return state.target ~= nil and not state.confirmed and not state.unavailable
+  return state.control == "button2"
 end
 
 function M.notePhysicalPress(now, expectedAfterPress)
@@ -131,7 +137,6 @@ function M.update(now, deviceInstance, enabled)
     state.dirty = false
     local selected = id and matchingBinding(deviceInstance) or nil
     state.target = selected and selected.target or nil
-    state.action = selected and selected.action or nil
     state.control = selected and selected.control or nil
     state.nextPollAt = now + 0.25 -- give new vehicle's action maps time to load
   end
@@ -146,7 +151,6 @@ function M.update(now, deviceInstance, enabled)
     state.pending = nil -- no reply: never assume a vehicle state
     state.confirmed = false
     state.confirmedValue, state.candidateValue, state.candidateAt = nil, nil, nil
-    state.unavailable = true
     state.nextPollAt = now + 2
     return
   end
@@ -183,11 +187,9 @@ function M.accept(now, id, sequence, target, value)
     -- manual latch unchanged, and retry after the vehicle finishes loading.
     state.confirmed = false
     state.confirmedValue, state.candidateValue, state.candidateAt = nil, nil, nil
-    state.unavailable = true
     state.nextPollAt = now + 2
     return nil
   end
-  state.unavailable = false
   if state.confirmed and value == state.confirmedValue then
     state.candidateValue, state.candidateAt = nil, nil
     return value, false

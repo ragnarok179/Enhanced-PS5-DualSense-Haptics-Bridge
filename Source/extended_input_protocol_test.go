@@ -43,3 +43,24 @@ func TestQ15SignedUnit(t *testing.T) {
 		}
 	}
 }
+
+func TestExtendedInputFocusLossGenerationRoundTrip(t *testing.T) {
+	state := extendedInputWireState{FocusLossGeneration: 2}
+	packet, err := encodeExtendedInputPacket(state, make([]byte, extendedInputPacketSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet[7]>>6 != 2 {
+		t.Fatalf("focus loss generation missing from wire flags: %x", packet[7])
+	}
+	decoded, err := decodeExtendedInputPacket(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.FocusLossGeneration != 2 {
+		t.Fatalf("focus epoch decoded as %d", decoded.FocusLossGeneration)
+	}
+	if !extendedButtonsChanged(extendedInputWireState{}, state) {
+		t.Fatal("focus loss must cause immediate input packet")
+	}
+}

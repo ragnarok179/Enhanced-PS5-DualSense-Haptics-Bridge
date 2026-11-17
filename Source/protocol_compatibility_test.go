@@ -32,19 +32,19 @@ func TestPendingCompatibilityPath(t *testing.T) {
 	}
 }
 
-func TestV143ModCanConnectToV150Bridge(t *testing.T) {
+func TestV143ModCanConnectToV151Bridge(t *testing.T) {
 	guard := protocolCompatibilityGuard{}
 	stopped := false
 	packet := []byte(`{"protocolId":"DPH","modVersion":"V1.43","protocolMin":43,"protocolMax":43,"v":43}`)
 	if guard.handlePacket(packet, false, func() { stopped = true }) || stopped {
-		t.Fatal("V1.43 must still be readable by V1.50 Bridge for updater guidance")
+		t.Fatal("V1.43 must still be readable by V1.51 Bridge for updater guidance")
 	}
 }
 
-func TestV150SynchronizedBridge(t *testing.T) {
+func TestV151SynchronizedBridge(t *testing.T) {
 	guard := protocolCompatibilityGuard{}
 	stopped := false
-	if guard.handlePacket([]byte(`{"protocolId":"DPH","modVersion":"V1.50","protocolMin":43,"protocolMax":43,"v":43}`), false, func() { stopped = true }) || stopped {
-		t.Fatal("V1.50 failed to synchronize")
+	if guard.handlePacket([]byte(`{"protocolId":"DPH","modVersion":"V1.51","protocolMin":43,"protocolMax":43,"v":43}`), false, func() { stopped = true }) || stopped {
+		t.Fatal("V1.51 failed to synchronize")
 	}
 }

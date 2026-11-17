@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$release = 'V1.50'
+$release = 'V1.51'
 
 $diagnosticsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $diagnosticsDir

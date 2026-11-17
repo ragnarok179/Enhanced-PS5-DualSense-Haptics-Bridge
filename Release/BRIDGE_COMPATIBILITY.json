@@ -11,15 +11,15 @@
   ],
   "releases": [
     {
-      "bridgeVersion": "V1.50",
-      "tag": "V1.50",
+      "bridgeVersion": "V1.51",
+      "tag": "V1.51",
       "channel": "stable",
       "protocols": [
         43
       ],
       "modMin": "V1.43",
-      "modMax": "V1.50",
-      "asset": "Enhanced_PS5_DualSense_Haptics_Bridge_V1.50.zip"
+      "modMax": "V1.51",
+      "asset": "Enhanced_PS5_DualSense_Haptics_Bridge_V1.51.zip"
     }
   ]
 }

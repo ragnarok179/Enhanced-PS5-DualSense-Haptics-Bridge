@@ -39,7 +39,7 @@ end
 -- Other mods and malformed events must never release our resources.
 lifecycle.onModDeactivated(nil)
 lifecycle.onModDeactivated({modID = "SOMEOTHERMOD", modname = "other.zip"})
-lifecycle.onModDeactivated({modData = {tagid = "SOMEOTHERMOD"}, fullpath = "/mods/Enhanced_PS5_DualSense_Haptics_V1.50.zip"})
+lifecycle.onModDeactivated({modData = {tagid = "SOMEOTHERMOD"}, fullpath = "/mods/Enhanced_PS5_DualSense_Haptics_V1.51.zip"})
 eq(count(loaded), #names, "unrelated mods keep all extensions")
 eq(count(registered), #names, "unrelated mods keep manual registrations")
 
@@ -49,7 +49,7 @@ eq(count(loaded), #names, "mission changes keep extensions alive")
 -- Real BeamNG manager events expose modData.tagid, even for renamed ZIPs.
 lifecycle.onModDeactivated({
   modData = {tagid = "ENHANCEDPS5DUALSENSEHAPTICS"},
-  fullpath = "/mods/Enhanced_PS5_DualSense_Haptics_V1.50 (7).zip",
+  fullpath = "/mods/Enhanced_PS5_DualSense_Haptics_V1.51 (7).zip",
 })
 eq(count(loaded), 0, "all extensions unloaded")
 eq(count(registered), 0, "all manual registrations removed")
@@ -68,7 +68,7 @@ eq(count(registered), 0, "no automatic resurrection while disabled")
 
 -- Simulate modScript registering the same names when user re-enables ZIP.
 for _, name in ipairs(names) do registered[name] = true; loaded[name] = true end
-lifecycle.onModDeactivated({fullpath="/mods/repo/Enhanced_PS5_DualSense_Haptics_V1.50.zip"})
+lifecycle.onModDeactivated({fullpath="/mods/repo/Enhanced_PS5_DualSense_Haptics_V1.51.zip"})
 eq(count(loaded), 0, "fallback filename-based ownership")
 eq(count(registered), 0, "fallback unregisters manual modes")
 assert(#logMessages == 0, table.concat(logMessages, "\n"))

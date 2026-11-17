@@ -29,6 +29,7 @@ local axisCount = 4
 local buttonCount = 17
 local povCount = 0
 local staleTimeout = 0.40
+local micDisconnectTimeout = 3.0 -- Short stream stalls during Ctrl+R are not controller disconnects.
 local maxPacketsPerUpdate = 64
 local bindingPollPeriod = 0.10
 local bindingHeartbeat = 0.50
@@ -98,12 +99,25 @@ local buttonState = {}
 local axisState = {}
 -- In Button mode the original virtual button2 follows the physical Mic Mute
 -- button. Toggle mode holds button2 and exposes axis10 at 0/100% for BeamNG
--- "Set ... Mode" bindings. The Bridge follows the same latch for the orange LED.
+-- "Set ... Mode" bindings. The Bridge must not keep its LED latched after
+-- BeamNG loses focus and releases the actual game action.
 local mic = {
+  gameFocused = true, stalePreserved = false, focusRecoveryUntil = -999, focusLossGeneration = nil,
+  vehicleId = nil, vehicleStates = {},
   settingKey = "dseMicMuteInputModeV1", invertKey = "dseMicMuteInvertedV1",
-  mode = "button", inverted = false, toggleOn = false, pressedHigh = false, axisLast = nil,
+  mode = "button", inverted = false, toggleOn = false, pressedHigh = false, blockUntilRelease = false, axisLast = nil,
 }
 mic.active = function() return mic.toggleOn ~= mic.inverted end
+
+-- In the GE VM BeamNG exposes the program's focus state. An unavailable API
+-- must not suppress genuine controller-disconnect handling.
+mic.programFocused = function()
+  if Engine and type(Engine.isProgramFocused) == "function" then
+    local ok, focused = pcall(Engine.isProgramFocused)
+    if ok and type(focused) == "boolean" then return focused end
+  end
+  return true
+end
 
 
 local touchState = {
@@ -931,15 +945,40 @@ local function serviceRelativeAxes()
   if relativeHasDeflection then relativeTargetEmittedFrame = updateFrame end
 end
 
-local function resetState()
-  -- A disconnected controller cannot leave gameplay controls latched.
+-- An Alt+Tab can release BeamNG's mapped action while the Bridge's LED still
+-- reflects the previous Mic press. The physical latch is no longer evidence
+-- of the in-game state. Drop it without emitting an axis "set mode" command.
+-- Readable vehicle actions will be observed again by MIC_SYNC on return.
+local function releaseMicForFocusLoss(physicalPressed)
+  if mic.mode ~= "toggle" then return end
+  MIC_SYNC.invalidate()
+  mic.blockUntilRelease = mic.blockUntilRelease or mic.pressedHigh or physicalPressed == true
   mic.toggleOn = false
-  mic.pressedHigh = false
-  MIC_SYNC.reset()
-  mic.emitAxis(false, true)
+  mic.pressedHigh = physicalPressed == true
+  mic.axisLast = nil
+  emitButton(2, false, true)
   if mic.sendLED then mic.sendLED() end
+end
+
+local function resetState(preserveMic)
+  -- Release transient controls after a stream timeout. Backgrounding BeamNG
+  -- is not proof of a disconnect: do not overwrite the Mic latch, its input
+  -- axis, or the known onDown binding with a synthetic transition.
+  if preserveMic then
+    MIC_SYNC.invalidate()
+  else
+    mic.toggleOn = false
+    mic.pressedHigh = false
+    mic.blockUntilRelease = false
+    mic.vehicleStates = {}
+    MIC_SYNC.reset()
+    mic.emitAxis(false, true)
+    if mic.sendLED then mic.sendLED() end
+  end
   for i = 0, axisCount - 1 do emitAxis(i, 0.5) end
-  for i = 0, buttonCount - 1 do emitButton(i, false, true) end
+  for i = 0, buttonCount - 1 do
+    if not (preserveMic and i == 2) then emitButton(i, false, true) end
+  end
   touchState.contacts = 0
   touchState.id1, touchState.id2 = nil, nil
   touchState.touch1, touchState.touch2 = false, false
@@ -985,8 +1024,20 @@ local function applyPacket(data)
   emitButton(0, hasBit(flags, 1))
   emitButton(1, hasBit(flags, 2))
   local mutePressed = hasBit(flags, 4)
+  -- Vehicle reloads may happen while Mic is physically held. Do not turn
+  -- that held level into a new button DOWN after a lifecycle reset.
+  if not mutePressed then mic.blockUntilRelease = false end
+  -- Focus loss is also reported by the Windows Bridge. Unlike relying on
+  -- Engine.isProgramFocused(), this survives a fully suspended game Lua VM.
+  local focusEpoch = math.floor(tf / 64)
+  if mic.focusLossGeneration == nil then
+    mic.focusLossGeneration = focusEpoch
+  elseif mic.focusLossGeneration ~= focusEpoch then
+    mic.focusLossGeneration = focusEpoch
+    releaseMicForFocusLoss(mutePressed)
+  end
   if mic.mode == "toggle" then
-    if mutePressed and not mic.pressedHigh then
+    if mic.gameFocused and mutePressed and not mic.pressedHigh and not mic.blockUntilRelease then
       mic.toggleOn = not mic.toggleOn
       MIC_SYNC.notePhysicalPress(elapsed, mic.active())
       -- Only a genuine Mic Mute press may emit an axis command. Re-reading
@@ -997,8 +1048,9 @@ local function applyPacket(data)
     -- A known onDown vehicle toggle must receive a fresh physical press on
     -- every click. Reasserting its latched button would toggle the vehicle back.
     -- Unknown bindings keep the original held-button behaviour.
-    local buttonOutput = mic.active()
-    if MIC_SYNC.pulsedButton() then buttonOutput = mutePressed end
+    local buttonOutput = mic.gameFocused and mic.active()
+    if mic.gameFocused and MIC_SYNC.pulsedButton() then buttonOutput = mutePressed end
+    if mic.blockUntilRelease then buttonOutput = false end
     emitButton(2, buttonOutput)
   else
     emitButton(2, mutePressed)
@@ -1277,10 +1329,19 @@ idleMotion.noteActivity = function(gyroMagnitude,linearAccelerationMagnitude)
 end
 
 mic.sendLED = function()
+  if mic.mode == "toggle" and mic.vehicleId then
+    mic.vehicleStates[mic.vehicleId] = mic.toggleOn
+  end
   if not ensureStatusUDP() then return end
   -- DMB1 v1: 1=toggle mode, 1=latched ON. LED only; no microphone mute command.
-  local packet = "DMB1" .. string.char(1, mic.mode == "toggle" and 1 or 0, mic.toggleOn and 1 or 0)
+  local mode = mic.mode == "toggle" and 1 or 0
+  local on = mic.toggleOn and 1 or 0
+  -- DMB1 remains for older Bridges. DMB2 v1 adds the authoritative game
+  -- focus flag, allowing the current Bridge to distinguish Alt+Tab from exit.
+  local packet = "DMB1" .. string.char(1, mode, on)
   pcall(function() statusUdp:sendto(packet, bridgeStatusHost, bridgeStatusPort) end)
+  local focusedPacket = "DMB2" .. string.char(1, mode, on, mic.gameFocused and 1 or 0)
+  pcall(function() statusUdp:sendto(focusedPacket, bridgeStatusHost, bridgeStatusPort) end)
 end
 
 mic.setMode = function(mode)
@@ -1289,11 +1350,15 @@ mic.setMode = function(mode)
     mic.mode = normalized
     MIC_SYNC.reset()
     mic.toggleOn = false
+    mic.vehicleStates = {}
+    mic.vehicleId = nil
+    mic.blockUntilRelease = mic.pressedHigh
     -- Preserve the physical pressed-high state: switching while held cannot
     -- synthesize an extra toggle on the next packet.
     emitButton(2, false, true)
     mic.emitAxis(false, true)
     persistSetting(mic.settingKey, normalized)
+    mic.selectVehicle(mic.playerVehicleId(), false)
   end
   mic.sendLED()
   return mic.mode
@@ -1320,20 +1385,40 @@ mic.setInverted = function(value)
   return mic.inverted
 end
 mic.getInverted = function() return mic.inverted end
--- Request a fresh, read-only vehicle state. Never reassert the old axis
--- during a reset/replacement: that would apply the previous vehicle's value
--- to the newly loaded vehicle instead of simply updating the orange LED.
-mic.refreshVehicleState = function()
-  MIC_SYNC.invalidate()
+-- The LED follows the selected vehicle's toggle, not a global latch. For a
+-- non-readable but genuine toggle, the last physical Mic press is the only
+-- available state evidence; retain it separately for each live vehicle.
+mic.playerVehicleId = function()
+  if type(getPlayerVehicle) ~= "function" then return nil end
+  local ok, vehicle = pcall(getPlayerVehicle, 0)
+  if not ok or not vehicle then return nil end
+  local read, id = pcall(function() return vehicle:getID() end)
+  return read and tonumber(id) or nil
 end
 
-local function eventTargetsCurrentVehicle(vehicleId)
-  local requestedId = tonumber(vehicleId)
-  if not requestedId or type(getPlayerVehicle) ~= "function" then return false end
-  local ok, vehicle = pcall(getPlayerVehicle, 0)
-  if not ok or not vehicle then return false end
-  local valid, activeId = pcall(function() return vehicle:getID() end)
-  return valid and requestedId == tonumber(activeId)
+mic.selectVehicle = function(vehicleId, replacement)
+  local id = tonumber(vehicleId)
+  if mic.mode ~= "toggle" then return end
+  if mic.vehicleId then mic.vehicleStates[mic.vehicleId] = mic.toggleOn end
+  -- Replacement can reuse the same object ID. Do not restore its old latch.
+  if replacement and id then mic.vehicleStates[id] = nil end
+  if not replacement and mic.vehicleId == id then return end
+  mic.vehicleId = id
+  mic.toggleOn = (id and mic.vehicleStates[id]) or false
+  mic.blockUntilRelease = mic.blockUntilRelease or mic.pressedHigh
+  mic.axisLast = nil
+  -- Release the previous vehicle's held button without making a new DOWN.
+  emitButton(2, false, true)
+  mic.sendLED()
+end
+
+mic.invalidateVehicleState = function()
+  MIC_SYNC.invalidate()  -- Discard late queries; the vehicle state may reload.
+end
+
+mic.eventTargetsCurrentVehicle = function(vehicleId)
+  local id = tonumber(vehicleId)
+  return id ~= nil and id == mic.playerVehicleId()
 end
 
 local function sendTouchBindingStatus(force)
@@ -1709,6 +1794,13 @@ local function initializeRuntime()
   mic.inverted = readStoredBoolSetting(mic.invertKey, false)
   mic.toggleOn = false
   mic.pressedHigh = false
+  mic.blockUntilRelease = false
+  mic.gameFocused = mic.programFocused()
+  mic.stalePreserved = false
+  mic.focusRecoveryUntil = -999
+  mic.focusLossGeneration = nil
+  mic.vehicleId = nil
+  mic.vehicleStates = {}
   idleMotion.enabled = idleMotion.readStored()
   touchState.inputMode = touchpadPolicyState.mousePolicy ~= "off" and "mouse" or "custom"
   if not SETTINGS_STORE.get(TOUCH_BINDING_MIGRATION_KEY, false) then
@@ -1720,6 +1812,7 @@ local function initializeRuntime()
   initUDP()
   ensureStatusUDP()
   resetState()
+  mic.selectVehicle(mic.playerVehicleId(), false)
   installInputCaptureObservers()
   refreshBindingCapture(currentRouteName())
   hasNewTouchpadBinding() -- establish baseline; existing user bindings are not new
@@ -1742,8 +1835,24 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
   elapsed = elapsed + math.max(0, tonumber(dtReal) or tonumber(dtSim) or tonumber(dtRaw) or 0)
   if deviceInstance == nil then ensureDevice() end
   if udp == nil then initUDP() end
-  MIC_SYNC.update(elapsed, deviceInstance, mic.mode == "toggle" and not staleResetDone and not micVehicleProbePaused)
+  local focused = mic.programFocused()
+  if focused ~= mic.gameFocused then
+    mic.gameFocused = focused
+    if focused then
+      mic.focusRecoveryUntil = elapsed + 1.5
+      MIC_SYNC.invalidate() -- query the actual action on return, where possible
+    else
+      releaseMicForFocusLoss(mic.pressedHigh)
+    end
+    mic.sendLED()
+  end
+  -- Preserve the recognized onDown binding while a focus-related stream gap
+  -- is unresolved. Rebuilding it prematurely could synthesize a second press.
+  if not mic.stalePreserved then
+    MIC_SYNC.update(elapsed, deviceInstance, mic.mode == "toggle" and not staleResetDone and not micVehicleProbePaused)
+  end
   pollUDP()
+  if not staleResetDone then mic.stalePreserved = false end
   serviceTapButtons()
   serviceSwipeButtons()
   serviceRelativeAxes()
@@ -1760,8 +1869,17 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
     end
   end
   if not staleResetDone and elapsed - lastPacketAt > staleTimeout then
-    resetState()
+    local preserveMic = mic.mode == "toggle"
+    resetState(preserveMic)
+    mic.stalePreserved = preserveMic
     staleResetDone = true
+  end
+  -- A 400ms stall must release transient controls, not the vehicle's toggle.
+  -- Expire the Mic state only after a real foreground stream loss.
+  if mic.stalePreserved and focused and elapsed >= mic.focusRecoveryUntil and
+      elapsed - lastPacketAt > micDisconnectTimeout then
+    resetState()
+    mic.stalePreserved = false
   end
   if elapsed - bindingPollAt >= bindingPollPeriod then
     bindingPollAt = elapsed
@@ -1798,36 +1916,66 @@ function M.onMicMuteVehicleState(vehicleId, sequence, target, value)
 end
 
 function M.onVehicleSwitched(oldId, newId, player)
-  if player == nil or tonumber(player) == 0 then mic.refreshVehicleState() end
+  if player == nil or tonumber(player) == 0 then
+    mic.invalidateVehicleState()
+    mic.selectVehicle(newId, false)
+  end
 end
 
 function M.onVehicleSpawned(vehicleId)
-  if eventTargetsCurrentVehicle(vehicleId) then mic.refreshVehicleState() end
+  if not mic.eventTargetsCurrentVehicle(vehicleId) then return end
+  mic.invalidateVehicleState()
+  -- Both a Ctrl+R and a normal spawn can emit this hook. A real replacement
+  -- is handled separately by onVehicleReplaced; never infer one from timing.
+  mic.selectVehicle(vehicleId, false)
 end
 
 function M.onVehicleReplaced(vehicleId)
-  -- The engine can reuse the same object ID for a newly chosen vehicle.
-  if eventTargetsCurrentVehicle(vehicleId) then mic.refreshVehicleState() end
+  if mic.eventTargetsCurrentVehicle(vehicleId) then
+    mic.invalidateVehicleState()
+    mic.selectVehicle(vehicleId, true)
+  end
+end
+
+function M.onVehicleDestroyed(vehicleId)
+  local id = tonumber(vehicleId)
+  if id then mic.vehicleStates[id] = nil end
+  if id and id == mic.vehicleId then
+    mic.invalidateVehicleState()
+    mic.vehicleId = nil
+    mic.toggleOn = false
+    mic.blockUntilRelease = mic.blockUntilRelease or mic.pressedHigh
+    mic.axisLast = nil
+    emitButton(2, false, true)
+    mic.sendLED()
+  end
 end
 
 function M.onVehicleResetted(vehicleId)
-  -- Ctrl+R/repair/respawn can rebuild the vehicle Lua state without changing
-  -- its object ID. A fresh probe must NOT reset the physical Mic Mute latch.
-  if eventTargetsCurrentVehicle(vehicleId) then mic.refreshVehicleState() end
+  if mic.eventTargetsCurrentVehicle(vehicleId) then
+    mic.invalidateVehicleState()
+    -- Ctrl+R reloads vehicle Lua but does not inherently change the toggle.
+    mic.selectVehicle(vehicleId, false)
+  end
 end
 
 function M.onClientEndMission()
   micVehicleProbePaused = true
-  MIC_SYNC.invalidate()
+  mic.invalidateVehicleState()
+  mic.vehicleStates = {}
+  mic.vehicleId = nil
+  mic.toggleOn = false
+  mic.sendLED()
 end
 
 function M.onClientStartMission()
   micVehicleProbePaused = false
-  mic.refreshVehicleState()
+  mic.invalidateVehicleState()
+  mic.selectVehicle(mic.playerVehicleId(), false)
 end
 
 function M.onInputBindingsChanged()
-  mic.refreshVehicleState()
+  mic.invalidateVehicleState()
   -- BeamNG writes user changes as the regular device .diff inputmap. Re-scan
   -- immediately so mouse fallback stops as soon as a touchpad control is bound.
   if hasNewTouchpadBinding() then

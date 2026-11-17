@@ -10,13 +10,13 @@
 
     <div v-if="saveError" class="state-box error" role="alert">{{ saveError }}</div>
 
-    <nav class="suite-tabs" aria-label="DualSense settings sections">
-      <button type="button" class="suite-tab" :class="{ active: activeTab === 'haptics' }" @click="activeTab = 'haptics'">Haptics</button>
-      <button type="button" class="suite-tab" :class="{ active: activeTab === 'inputs' }" @click="activeTab = 'inputs'">Inputs</button>
-      <button type="button" class="suite-tab" :class="{ active: activeTab === 'speaker' }" @click="activeTab = 'speaker'">Speaker</button>
+    <nav class="suite-tabs" role="tablist" aria-label="DualSense settings sections" @keydown="onTabKeydown">
+      <button type="button" class="suite-tab" role="tab" id="dph-tab-haptics" :aria-controls="'dph-panel-haptics'" :aria-selected="activeTab === 'haptics'" :tabindex="activeTab === 'haptics' ? 0 : -1" :class="{ active: activeTab === 'haptics' }" @click="activeTab = 'haptics'">Haptics</button>
+      <button type="button" class="suite-tab" role="tab" id="dph-tab-inputs" :aria-controls="'dph-panel-inputs'" :aria-selected="activeTab === 'inputs'" :tabindex="activeTab === 'inputs' ? 0 : -1" :class="{ active: activeTab === 'inputs' }" @click="activeTab = 'inputs'">Inputs</button>
+      <button type="button" class="suite-tab" role="tab" id="dph-tab-speaker" :aria-controls="'dph-panel-speaker'" :aria-selected="activeTab === 'speaker'" :tabindex="activeTab === 'speaker' ? 0 : -1" :class="{ active: activeTab === 'speaker' }" @click="activeTab = 'speaker'">Speaker</button>
     </nav>
 
-    <div v-if="activeTab === 'haptics'" class="suite-panel">
+    <div v-if="activeTab === 'haptics'" id="dph-panel-haptics" role="tabpanel" aria-labelledby="dph-tab-haptics" class="suite-panel">
       <div v-if="loading" class="state-box">Loading settings…</div>
       <div v-else-if="loadError" class="state-box error">{{ loadError }}</div>
 
@@ -31,6 +31,7 @@
             </label>
             <SettingSlider
               label="Output level"
+              :disabled="!values.haptics.masterEnabled"
               :model-value="values.haptics.masterPercent"
               @update:model-value="v => updatePercent(values.haptics, 'masterPercent', v)"
             />
@@ -38,31 +39,34 @@
 
           <div class="feature-card">
             <label class="feature-title">
-              <input type="checkbox" v-model="values.haptics.surfaceEnabled" @change="scheduleSave" />
+              <input type="checkbox" :disabled="!values.haptics.masterEnabled" v-model="values.haptics.surfaceEnabled" @change="scheduleSave" />
               <span>Road surfaces</span>
             </label>
             <SettingSlider
               label="All road surfaces"
+              :disabled="!values.haptics.masterEnabled || !values.haptics.surfaceEnabled"
               :model-value="values.haptics.surfacePercent"
               @update:model-value="v => updatePercent(values.haptics, 'surfacePercent', v)"
             />
 
-            <button class="advanced-toggle" type="button" @click="advancedSurfacesOpen = !advancedSurfacesOpen">
+            <button class="advanced-toggle" type="button" :disabled="!values.haptics.masterEnabled || !values.haptics.surfaceEnabled" :aria-expanded="advancedSurfacesOpen" aria-controls="dph-surface-profiles" @click="advancedSurfacesOpen = !advancedSurfacesOpen">
               <span>Advanced surface settings</span>
               <span>{{ advancedSurfacesOpen ? '▲' : '▼' }}</span>
             </button>
 
-            <div v-if="advancedSurfacesOpen" class="advanced-panel">
+            <div v-if="advancedSurfacesOpen" id="dph-surface-profiles" class="advanced-panel">
               <div v-for="surface in surfaces" :key="surface.key" class="surface-card">
                 <div class="surface-title">{{ surface.label }}</div>
                 <SettingSlider
                   label="Rolling power"
+                  :disabled="!values.haptics.masterEnabled || !values.haptics.surfaceEnabled"
                   :model-value="values.haptics.surfaceProfiles[surface.key].rollingPercent"
                   compact
                   @update:model-value="v => updateSurface(surface.key, 'rollingPercent', v)"
                 />
                 <SettingSlider
                   label="Slip power"
+                  :disabled="!values.haptics.masterEnabled || !values.haptics.surfaceEnabled"
                   :model-value="values.haptics.surfaceProfiles[surface.key].slipPercent"
                   compact
                   @update:model-value="v => updateSurface(surface.key, 'slipPercent', v)"
@@ -73,11 +77,12 @@
 
           <div class="feature-card">
             <label class="feature-title">
-              <input type="checkbox" v-model="values.haptics.impactEnabled" @change="scheduleSave" />
+              <input type="checkbox" :disabled="!values.haptics.masterEnabled" v-model="values.haptics.impactEnabled" @change="scheduleSave" />
               <span>Bumps / impacts</span>
             </label>
             <SettingSlider
               label="Strength"
+              :disabled="!values.haptics.masterEnabled || !values.haptics.impactEnabled"
               :model-value="values.haptics.impactPercent"
               @update:model-value="v => updatePercent(values.haptics, 'impactPercent', v)"
             />
@@ -93,7 +98,8 @@
               <span>L2 brake resistance</span>
             </label>
             <SettingRangeSlider
-              label="Start / end deadzone"
+              label="Resistance travel range"
+              :disabled="!values.adaptiveTriggers.l2BrakeEnabled"
               :start="values.adaptiveTriggers.l2StartPositionPercent"
               :end="values.adaptiveTriggers.l2EndPositionPercent"
               compact
@@ -103,12 +109,14 @@
             <div class="trigger-resistance-settings">
             <SettingSlider
               label="Resistance strength at start of travel"
+              :disabled="!values.adaptiveTriggers.l2BrakeEnabled"
               :model-value="values.adaptiveTriggers.l2BrakeStartPercent"
               compact
               @update:model-value="v => updateTriggerRange('l2', 'start', v)"
             />
             <SettingSlider
               label="Resistance strength at end of travel"
+              :disabled="!values.adaptiveTriggers.l2BrakeEnabled"
               :model-value="values.adaptiveTriggers.l2BrakeEndPercent"
               compact
               @update:model-value="v => updateTriggerRange('l2', 'end', v)"
@@ -123,6 +131,7 @@
             </label>
             <SettingSlider
               label="ABS kick"
+              :disabled="!values.adaptiveTriggers.absEnabled"
               :model-value="values.adaptiveTriggers.absPercent"
               compact
               @update:model-value="v => updatePercent(values.adaptiveTriggers, 'absPercent', v)"
@@ -135,7 +144,8 @@
               <span>R2 throttle resistance</span>
             </label>
             <SettingRangeSlider
-              label="Start / end deadzone"
+              label="Resistance travel range"
+              :disabled="!values.adaptiveTriggers.r2ThrottleEnabled"
               :start="values.adaptiveTriggers.r2StartPositionPercent"
               :end="values.adaptiveTriggers.r2EndPositionPercent"
               compact
@@ -145,12 +155,14 @@
             <div class="trigger-resistance-settings">
             <SettingSlider
               label="Resistance strength at start of travel"
+              :disabled="!values.adaptiveTriggers.r2ThrottleEnabled"
               :model-value="values.adaptiveTriggers.r2ThrottleStartPercent"
               compact
               @update:model-value="v => updateTriggerRange('r2', 'start', v)"
             />
             <SettingSlider
               label="Resistance strength at end of travel"
+              :disabled="!values.adaptiveTriggers.r2ThrottleEnabled"
               :model-value="values.adaptiveTriggers.r2ThrottleEndPercent"
               compact
               @update:model-value="v => updateTriggerRange('r2', 'end', v)"
@@ -165,15 +177,17 @@
             </label>
             <SettingSlider
               label="Jolt strength"
+              :disabled="!values.adaptiveTriggers.r2EffectsEnabled"
               :model-value="values.adaptiveTriggers.r2EffectsPercent"
               compact
               @update:model-value="v => updatePercent(values.adaptiveTriggers, 'r2EffectsPercent', v)"
             />
-            <label class="feature-title compact-title"><input type="checkbox" v-model="values.adaptiveTriggers.r2LimiterEnabled" @change="scheduleSave" /><span>Rev limiter pulses</span></label>
-            <label class="feature-title compact-title"><input type="checkbox" v-model="values.adaptiveTriggers.r2TcsEnabled" @change="scheduleSave" /><span>Traction control pulses</span></label>
-            <label class="feature-title compact-title"><input type="checkbox" v-model="values.adaptiveTriggers.r2WheelspinPulseEnabled" @change="scheduleSave" /><span>Wheelspin pulses (with or without ESC/TCS)</span></label>
+            <label class="feature-title compact-title"><input type="checkbox" :disabled="!values.adaptiveTriggers.r2EffectsEnabled" v-model="values.adaptiveTriggers.r2LimiterEnabled" @change="scheduleSave" /><span>Rev limiter pulses</span></label>
+            <label class="feature-title compact-title"><input type="checkbox" :disabled="!values.adaptiveTriggers.r2EffectsEnabled" v-model="values.adaptiveTriggers.r2TcsEnabled" @change="scheduleSave" /><span>Traction control pulses</span></label>
+            <label class="feature-title compact-title"><input type="checkbox" :disabled="!values.adaptiveTriggers.r2EffectsEnabled" v-model="values.adaptiveTriggers.r2WheelspinPulseEnabled" @change="scheduleSave" /><span>Wheelspin pulses (with or without ESC/TCS)</span></label>
             <SettingSlider
               label="Wheelspin pulse strength"
+              :disabled="!values.adaptiveTriggers.r2EffectsEnabled || !values.adaptiveTriggers.r2WheelspinPulseEnabled"
               :model-value="values.adaptiveTriggers.r2WheelspinPulsePercent"
               compact
               @update:model-value="v => updatePercent(values.adaptiveTriggers, 'r2WheelspinPulsePercent', v)"
@@ -190,6 +204,7 @@
             </label>
             <SettingSlider
               label="Brightness"
+              :disabled="!values.lighting.enabled"
               :model-value="values.lighting.brightnessPercent"
               @update:model-value="v => updatePercent(values.lighting, 'brightnessPercent', v)"
             />
@@ -198,11 +213,11 @@
       </template>
     </div>
 
-    <div v-else-if="activeTab === 'inputs'" class="suite-panel embedded-panel">
+    <div v-else-if="activeTab === 'inputs'" id="dph-panel-inputs" role="tabpanel" aria-labelledby="dph-tab-inputs" class="suite-panel embedded-panel">
       <DualSenseExtendedInputsSettings ref="inputsPanelRef" />
     </div>
 
-    <div v-else class="suite-panel embedded-panel">
+    <div v-else id="dph-panel-speaker" role="tabpanel" aria-labelledby="dph-tab-speaker" class="suite-panel embedded-panel">
       <ControllerSpeakerSettings ref="speakerPanelRef" />
     </div>
   </section>
@@ -240,6 +255,20 @@ const saveError = ref("")
 const advancedSurfacesOpen = ref(false)
 const values = reactive(createDefaults())
 let saveTimer = null
+
+function onTabKeydown(event) {
+  const tabs = ["haptics", "inputs", "speaker"]
+  const index = tabs.indexOf(activeTab.value)
+  let next = index
+  if (event.key === "ArrowRight") next = (index + 1) % tabs.length
+  else if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length
+  else if (event.key === "Home") next = 0
+  else if (event.key === "End") next = tabs.length - 1
+  else return
+  event.preventDefault()
+  activeTab.value = tabs[next]
+  event.currentTarget.querySelector(`#dph-tab-${tabs[next]}`)?.focus()
+}
 
 function replaceValues(source) {
   const next = normalizeSettings(source)
@@ -386,7 +415,7 @@ onBeforeUnmount(() => {
   --dph-dim: #94989f;
 
   width: 100%;
-  max-width: 640px;
+  max-width: 690px;
   min-width: 0;
   max-height: calc(100vh - 5.5rem);
   overflow-y: auto;
@@ -420,9 +449,9 @@ onBeforeUnmount(() => {
 
 .dph-header h2 {
   margin: 0;
-  font-size: 1.38rem;
-  line-height: 1.15;
-  font-weight: 700;
+  font-size: 1.24rem;
+  line-height: 1.2;
+  font-weight: 650;
 }
 
 .header-actions {
@@ -444,7 +473,7 @@ onBeforeUnmount(() => {
   background: var(--dph-control);
   color: var(--dph-text);
   font: inherit;
-  font-size: 1.66rem;
+  font-size: 1.42rem;
   font-weight: 400;
   line-height: 1;
   cursor: pointer;
@@ -487,13 +516,13 @@ onBeforeUnmount(() => {
 
 .suite-tab,
 .advanced-toggle {
-  min-height: 2.45rem;
+  min-height: 2.3rem;
   border: 1px solid transparent;
   border-radius: 6px;
   background: var(--dph-control);
   color: var(--dph-muted);
   font: inherit;
-  font-size: 1.08rem;
+  font-size: 0.94rem;
   font-weight: 650;
   cursor: pointer;
   transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, transform 0.10s ease;
@@ -514,7 +543,7 @@ onBeforeUnmount(() => {
   outline-offset: 2px;
 }
 
-.suite-tab.active {
+.suite-tab[aria-selected="true"] {
   background: var(--dph-orange);
   border-color: var(--dph-orange);
   color: #fff;
@@ -524,7 +553,7 @@ onBeforeUnmount(() => {
 
 .group {
   margin-top: 0.72rem;
-  padding: 0.86rem 0.9rem;
+  padding: 0.68rem 0.72rem;
   border-radius: 8px;
   background: var(--dph-card);
   border: 1px solid var(--dph-line-soft);
@@ -532,13 +561,13 @@ onBeforeUnmount(() => {
 
 .section-group {
   display: grid;
-  gap: 0.68rem;
+  gap: 0.5rem;
 }
 
 .group h3 {
-  margin: 0 0 0.62rem;
-  font-size: 1.28rem;
-  line-height: 1.2;
+  margin: 0 0 0.66rem;
+  font-size: 1.13rem;
+  line-height: 1.25;
   font-weight: 700;
   color: #f1f1f1;
 }
@@ -549,24 +578,25 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   margin: 0 0 0.42rem;
   cursor: pointer;
-  font-size: 1.18rem;
-  line-height: 1.28;
-  font-weight: 700;
+  font-size: 1.01rem;
+  line-height: 1.3;
+  font-weight: 650;
   color: #f5f5f5;
 }
 
+.feature-title input:focus-visible { outline: 2px solid var(--dph-orange); outline-offset: 3px; }
 .feature-title input { width: 1.18rem; height: 1.18rem; margin: 0; accent-color: var(--dph-orange); flex: 0 0 auto; }
 
 .sub-feature {
   margin-top: 0.72rem;
   padding-top: 0.65rem;
   border-top: 1px solid rgba(255, 255, 255, 0.055);
-  font-size: 1.08rem;
+  font-size: 0.94rem;
 }
 
 .compact-title {
-  margin-bottom: 0.36rem;
-  font-size: 1.18rem;
+  margin-bottom: 0.38rem;
+  font-size: 1.01rem;
 }
 
 .advanced-toggle {
@@ -581,18 +611,20 @@ onBeforeUnmount(() => {
 }
 
 .advanced-toggle span:last-child { color: var(--dph-orange); }
+.advanced-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+.feature-title input:disabled + span { opacity: 0.5; }
 
 .feature-card,
 .trigger-card {
   min-width: 0;
-  padding: 0.74rem 0.78rem;
+  padding: 0.62rem 0.66rem;
   background: var(--dph-card-strong);
   border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 .trigger-resistance-settings {
-  margin-top: 1.35rem;
+  margin-top: 0.7rem;
 }
 
 .feature-card + .feature-card,
@@ -624,9 +656,9 @@ onBeforeUnmount(() => {
 .surface-card:first-child { margin-top: 0; }
 
 .surface-title {
-  margin-bottom: 0.25rem;
-  font-size: 1.08rem;
-  font-weight: 700;
+  margin-bottom: 0.3rem;
+  font-size: 0.97rem;
+  font-weight: 650;
   color: #f2f2f2;
 }
 
@@ -695,7 +727,7 @@ onBeforeUnmount(() => {
   width: 100%;
   min-width: 0;
   margin: 0.72rem 0 0;
-  padding: 0.86rem 0.9rem;
+  padding: 0.68rem 0.72rem;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.055);
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -704,8 +736,8 @@ onBeforeUnmount(() => {
 
 .dph-settings .embedded-panel .group h3 {
   margin: 0 0 0.58rem;
-  font-size: 1.28rem;
-  line-height: 1.2;
+  font-size: 1.13rem;
+  line-height: 1.25;
   font-weight: 700;
   color: #f1f1f1;
 }
@@ -716,9 +748,9 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   margin: 0;
   cursor: pointer;
-  font-size: 1.14rem;
-  line-height: 1.28;
-  font-weight: 700;
+  font-size: 1.01rem;
+  line-height: 1.3;
+  font-weight: 650;
   color: #f4f4f4;
 }
 
@@ -771,10 +803,10 @@ onBeforeUnmount(() => {
 
 .dph-settings .dse-settings .custom-panel { display: grid; gap: 0.58rem; }
 .dph-settings .dse-settings .finger-group { display: grid; gap: 0.44rem; padding: 0.72rem 0.76rem; border-radius: 7px; background: rgba(255, 255, 255, 0.078); border: 1px solid rgba(255, 255, 255, 0.085); }
-.dph-settings .dse-settings .finger-title { margin-bottom: 0.1rem; font-size: 0.9rem; font-weight: 700; color: #a8abb1; text-transform: uppercase; letter-spacing: 0.04em; }
+.dph-settings .dse-settings .finger-title { margin-bottom: 0.2rem; font-size: 0.96rem; font-weight: 650; color: #a8abb1; text-transform: uppercase; letter-spacing: 0.04em; }
 .dph-settings .dse-settings .mapping-row { display: grid; grid-template-columns: minmax(6.3rem, 0.82fr) minmax(0, 2.18fr); align-items: center; gap: 0.58rem; min-width: 0; }
 .dph-settings .dse-settings .mapping-row + .mapping-row { padding-top: 0.42rem; border-top: 1px solid rgba(255, 255, 255, 0.06); }
-.dph-settings .dse-settings .channel-name { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; font-size: 1.08rem; color: #d6d8dc; }
+.dph-settings .dse-settings .channel-name { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; font-size: 0.94rem; color: #d6d8dc; }
 .dph-settings .dse-settings .channel-name small { font-size: 0.83rem; color: #999da4; }
 .dph-settings .dse-settings .mapping-segments { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.3rem; min-width: 0; }
 .dph-settings .dse-settings .mapping-choice { padding: 0 0.38rem; font-size: 0.86rem; }
@@ -787,7 +819,7 @@ onBeforeUnmount(() => {
 .dph-settings .dse-settings .sensor-label,
 .dph-settings .dse-settings .accel-label { display: flex; flex-direction: column; min-width: 0; }
 .dph-settings .dse-settings .sensor-label strong,
-.dph-settings .dse-settings .accel-label strong { font-size: 1.14rem; line-height: 1.24; color: #f2f2f2; }
+.dph-settings .dse-settings .accel-label strong { font-size: 0.96rem; line-height: 1.24; color: #f2f2f2; }
 .dph-settings .dse-settings .binding-label { margin-top: 0.16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; color: #b8bbc1; }
 .dph-settings .dse-settings .binding-label.muted { color: #858990; }
 .dph-settings .dse-settings .sensor-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.36rem; align-items: center; min-width: 0; }
@@ -814,7 +846,7 @@ onBeforeUnmount(() => {
 .dph-settings .dse-settings .full-field { grid-column: 1 / -1; }
 .dph-settings .dse-settings .advanced-field input,
 .dph-settings .dse-settings .custom-axis-row input,
-.dph-settings .dse-settings .idle-input { width: 100%; min-width: 0; min-height: 2.45rem; padding: 0.42rem 0.55rem; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; color: #fff; background: rgba(0, 0, 0, 0.28); font: inherit; font-size: 0.9rem; text-align: center; }
+.dph-settings .dse-settings .idle-input { width: 100%; min-width: 0; min-height: 2.3rem; padding: 0.42rem 0.55rem; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; color: #fff; background: rgba(0, 0, 0, 0.28); font: inherit; font-size: 0.9rem; text-align: center; }
 .dph-settings .dse-settings .advanced-field input:focus,
 .dph-settings .dse-settings .custom-axis-row input:focus,
 .dph-settings .dse-settings .idle-input:focus { outline: 2px solid #ef6b1c; outline-offset: 1px; border-color: #ef6b1c; }
@@ -838,7 +870,7 @@ onBeforeUnmount(() => {
 .dph-settings .dse-settings .idle-unit,
 .dph-settings .dse-settings .range-hint { font-size: 0.82rem; color: #9fa2a8; }
 .dph-settings .dse-settings .number-stepper { display: grid; grid-template-columns: 2.35rem minmax(4rem, 1fr) 2.35rem auto; align-items: center; gap: 0.34rem; min-width: 0; }
-.dph-settings .dse-settings .stepper-button { width: 2.45rem; min-width: 2.45rem; height: 2.45rem; padding: 0; font-size: 1.28rem; line-height: 1; user-select: none; touch-action: none; }
+.dph-settings .dse-settings .stepper-button { width: 2.45rem; min-width: 2.45rem; height: 2.45rem; padding: 0; font-size: 0.94rem; line-height: 1; user-select: none; touch-action: none; }
 .dph-settings .dse-settings .number-stepper input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 .dph-settings .dse-settings .number-stepper input[type="number"]::-webkit-inner-spin-button,
 .dph-settings .dse-settings .number-stepper input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -847,14 +879,14 @@ onBeforeUnmount(() => {
 .dph-settings .dse-settings .sleep-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.7rem; min-width: 0; font-size: 0.9rem; color: #d1d3d7; }
 .dph-settings .dse-settings .sleep-stepper { width: min(100%, 16rem); grid-template-columns: 2.35rem minmax(4.6rem, 1fr) 2.35rem auto; }
 
-.dph-settings .speaker-settings .group { margin: 0.72rem 0 0; padding: 0.86rem 0.9rem; border-radius: 8px; background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.07); }
-.dph-settings .speaker-settings .group h3 { margin: 0 0 0.58rem; font-size: 1.28rem; font-weight: 700; color: #f1f1f1; }
-.dph-settings .speaker-settings .feature-title { display: flex; align-items: center; gap: 0.5rem; margin: 0; cursor: pointer; font-size: 1.14rem; font-weight: 700; line-height: 1.28; }
+.dph-settings .speaker-settings .group { margin: 0.72rem 0 0; padding: 0.68rem 0.72rem; border-radius: 8px; background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.07); }
+.dph-settings .speaker-settings .group h3 { margin: 0 0 0.64rem; font-size: 1.13rem; line-height: 1.25; font-weight: 700; color: #f1f1f1; }
+.dph-settings .speaker-settings .feature-title { display: flex; align-items: center; gap: 0.5rem; margin: 0; cursor: pointer; font-size: 1.01rem; font-weight: 650; line-height: 1.28; }
 .dph-settings .speaker-settings .choice-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.34rem; }
-.dph-settings .speaker-settings .choice { min-height: 2.45rem; padding: 0 0.56rem; font-size: 0.9rem; }
+.dph-settings .speaker-settings .choice { min-height: 2.3rem; padding: 0 0.56rem; font-size: 0.9rem; }
 .dph-settings .speaker-settings .stepper { display: grid; grid-template-columns: 2.35rem minmax(5rem, 8rem) 2.35rem; align-items: center; gap: 0.34rem; }
-.dph-settings .speaker-settings .step { width: 2.45rem; height: 2.45rem; padding: 0; font-size: 1.28rem; user-select: none; touch-action: none; }
-.dph-settings .speaker-settings .value { height: 2.45rem; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; background: rgba(0, 0, 0, 0.28); font-size: 1.08rem; color: #fff; }
+.dph-settings .speaker-settings .step { width: 2.45rem; height: 2.45rem; padding: 0; font-size: 0.94rem; user-select: none; touch-action: none; }
+.dph-settings .speaker-settings .value { height: 2.45rem; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; background: rgba(0, 0, 0, 0.28); font-size: 0.94rem; color: #fff; }
 .dph-settings .speaker-settings .status-row { min-height: 1rem; margin-top: 0.45rem; color: #999da4; font-size: 0.82rem; }
 .dph-settings .speaker-settings .error { margin-top: 0.55rem; padding: 0.7rem; border-radius: 6px; background: rgba(123, 45, 22, 0.25); border: 1px solid rgba(255, 154, 105, 0.28); color: #ffba96; }
 

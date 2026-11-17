@@ -1,5 +1,5 @@
 <template>
-  <div class="setting-slider" :class="{ compact }">
+  <div class="setting-slider" :class="{ compact, disabled }">
     <div class="setting-head">
       <div class="setting-copy">
         <div class="setting-title">{{ label }}</div>
@@ -15,6 +15,8 @@
         :max="max"
         :step="step"
         with-input
+        :disabled="disabled"
+        :aria-label="label"
       />
       <strong class="setting-unit">%</strong>
     </div>
@@ -33,6 +35,7 @@ const props = defineProps({
   max: { type: Number, default: 100 },
   step: { type: Number, default: 1 },
   compact: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(["update:modelValue"])
@@ -44,7 +47,7 @@ const sliderValue = computed({
   },
   set(value) {
     const numeric = Number(value)
-    if (Number.isFinite(numeric)) emit("update:modelValue", numeric)
+    if (!props.disabled && Number.isFinite(numeric)) emit("update:modelValue", numeric)
   },
 })
 </script>
@@ -53,25 +56,26 @@ const sliderValue = computed({
 .setting-slider {
   width: 100%;
   min-width: 0;
-  margin: 0.48rem 0 0.82rem;
+  margin: 1.18rem 0 0.64rem;
 }
 
-.setting-slider.compact { margin: 0.36rem 0 0.58rem; }
+.setting-slider.disabled .setting-control { opacity: 0.45; }
+.setting-slider.compact { margin: 1.06rem 0 0.54rem; }
 
 .setting-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.8rem;
-  margin-bottom: 0.34rem;
+  margin-bottom: 0.40rem;
 }
 
 .setting-copy { min-width: 0; }
 
 .setting-title {
-  font-size: 1.08rem;
-  line-height: 1.25;
-  font-weight: 700;
+  font-size: 0.91rem;
+  line-height: 1.3;
+  font-weight: 600;
   color: #f4f4f4;
 }
 
@@ -98,7 +102,7 @@ const sliderValue = computed({
 .setting-unit {
   min-width: 1.1rem;
   color: #f4f4f4;
-  font-size: 1.02rem;
+  font-size: 0.9rem;
   line-height: 1;
   text-align: left;
 }
